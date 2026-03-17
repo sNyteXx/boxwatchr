@@ -5,9 +5,25 @@
 # Rules are evaluated top to bottom. The first rule that matches an
 # email wins and processing stops. Emails that do not match any rule
 # are left completely alone.
+
+# =============================================================================
+# REQUIRED FIELDS
+# =============================================================================
+
+# Every rule must have all of the following fields or it will be skipped
+# on startup and a warning will be logged.
 #
-# Each rule needs a name, a match setting, at least one condition,
-# and at least one action.
+#   name                        A unique name identifying the rule. Shown in logs and on
+#                               the dashboard when a rule matches.
+#   match                       Controls how multiple conditions are evaluated. Must be
+#                               "all" or "any". See MATCH OPTIONS below.
+#   learn                       Tells rspamd whether matching emails are spam or legitimate
+#                               mail. Must be "spam" or "ham". See LEARNING below.
+#   conditions                  A list of at least one condition. Each condition must have
+#                               a field, an operator, and a value. See CONDITION FIELDS
+#                               and CONDITION OPERATORS below.
+#   actions                     A list of at least one action. Each action must have a type.
+#                               Move actions also require a destination. See ACTIONS below.
 
 # =============================================================================
 # MATCH OPTIONS
@@ -127,6 +143,23 @@
 #   - type: junk
 
 # =============================================================================
+# LEARNING
+# =============================================================================
+
+# Every rule requires a learn field. This tells rspamd whether emails
+# matching this rule should be treated as spam or legitimate mail. rspamd
+# uses this feedback to improve its scoring accuracy over time.
+#
+# learn: spam                   Tells rspamd this email is spam. Future emails with similar
+#                               characteristics will receive higher spam scores.
+#
+# learn: ham                    Tells rspamd this email is legitimate. Future emails with
+#                               similar characteristics will receive lower spam scores.
+#
+# This field is required. Rules without it will be skipped on startup
+# and a warning will be logged.
+
+# =============================================================================
 # EXAMPLE RULES
 # =============================================================================
 
@@ -136,6 +169,7 @@ rules:
   # comparing. You only need the plain version in your rule value.
   - name: No reply addresses
     match: any
+    learn: ham
     conditions:
       - field: sender_local
         operator: equals
@@ -150,6 +184,7 @@ rules:
   # and "ournewsletter" both match.
   - name: Move newsletters
     match: any
+    learn: ham
     conditions:
       - field: sender_local
         operator: contains
@@ -163,6 +198,7 @@ rules:
   # a domain root of "nfl" so you only need one rule to catch them all.
   - name: NFL emails
     match: any
+    learn: ham
     conditions:
       - field: sender_domain_root
         operator: equals
@@ -176,6 +212,7 @@ rules:
   # match is set to all.
   - name: Walmart receipts
     match: all
+    learn: ham
     conditions:
       - field: sender_domain_root
         operator: equals
@@ -190,6 +227,7 @@ rules:
   # Delete emails from any .ru domain outright.
   - name: Delete Russian TLD
     match: any
+    learn: spam
     conditions:
       - field: sender_domain_tld
         operator: equals
@@ -202,6 +240,7 @@ rules:
   # in spam and phishing emails.
   - name: Random looking sender addresses
     match: any
+    learn: spam
     conditions:
       - field: sender_local
         operator: regex
@@ -214,6 +253,7 @@ rules:
   # that slipped past the sender and subject checks above.
   - name: Mailing list emails
     match: any
+    learn: ham
     conditions:
       - field: raw_headers
         operator: contains

@@ -24,7 +24,7 @@ def load_rules(path):
         logger.error("Failed to parse rules file: %s", e)
         raise
 
-    if not data or "rules" not in data:
+    if not data or "rules" not in data or not data["rules"]:
         logger.warning("No rules found in %s", path)
         return []
 
@@ -43,7 +43,13 @@ def load_rules(path):
     return validated
 
 def _validate_rule(rule):
-    name = rule.get("name", "unnamed")
+    # Pull the name first so we can reference it in all warning messages.
+    # Unlike other fields, a missing name does not skip the rule but we
+    # do warn about it since unnamed rules are hard to identify in logs.
+    name = rule.get("name", "").strip()
+    if not name:
+        logger.warning("A rule is missing a name and will be skipped")
+        return None
 
     if "conditions" not in rule or not rule["conditions"]:
         logger.warning("Rule '%s' has no conditions and will be skipped", name)
@@ -53,7 +59,16 @@ def _validate_rule(rule):
         logger.warning("Rule '%s' has no actions and will be skipped", name)
         return None
 
-    match = rule.get("match", "all").lower()
+    if "learn" not in rule:
+        logger.warning("Rule '%s' is missing the required 'learn' field and will be skipped", name)
+        return None
+
+    learn = rule.get("learn", "").lower().strip()
+    if learn not in ("spam", "ham"):
+        logger.warning("Rule '%s' has invalid learn value '%s'. Must be 'spam' or 'ham' and will be skipped", name, learn)
+        return None
+
+    match = rule.get("match", "all").lower().strip()
     if match not in ("all", "any"):
         logger.warning("Rule '%s' has invalid match value '%s', defaulting to 'all'", name, match)
         match = "all"
@@ -70,46 +85,58 @@ def _validate_rule(rule):
     valid_actions = {"move", "delete", "junk"}
 
     validated_conditions = []
-    for condition in rule["conditions"]:
-        field = condition.get("field", "")
-        operator = condition.get("operator", "")
+    for i, condition in enumerate(rule["conditions"]):
+        field = condition.get("field", "").strip()
+        operator = condition.get("operator", "").strip()
         value = condition.get("value", "")
 
+        if not field:
+            logger.warning("Rule '%s' condition %s is missing a field and will be skipped", name, i + 1)
+            return None
+
+        if not operator:
+            logger.warning("Rule '%s' condition %s is missing an operator and will be skipped", name, i + 1)
+            return None
+
+        if value == "" or value is None:
+            logger.warning("Rule '%s' condition %s is missing a value and will be skipped", name, i + 1)
+            return None
+
         if field not in valid_fields:
-            logger.warning("Rule '%s' has unknown field '%s' and will be skipped", name, field)
+            logger.warning("Rule '%s' condition %s has unknown field '%s' and will be skipped", name, i + 1, field)
             return None
 
         if operator not in valid_operators:
-            logger.warning("Rule '%s' has unknown operator '%s' and will be skipped", name, operator)
-            return None
-
-        if not value:
-            logger.warning("Rule '%s' has an empty value and will be skipped", name)
+            logger.warning("Rule '%s' condition %s has unknown operator '%s' and will be skipped", name, i + 1, operator)
             return None
 
         if operator == "regex":
             try:
-                re.compile(value)
+                re.compile(str(value))
             except re.error as e:
-                logger.warning("Rule '%s' has an invalid regex '%s': %s and will be skipped", name, value, e)
+                logger.warning("Rule '%s' condition %s has an invalid regex '%s': %s and will be skipped", name, i + 1, value, e)
                 return None
 
         validated_conditions.append({
             "field": field,
             "operator": operator,
-            "value": value
+            "value": str(value)
         })
 
     validated_actions = []
-    for action in rule["actions"]:
-        action_type = action.get("type", "")
+    for i, action in enumerate(rule["actions"]):
+        action_type = action.get("type", "").strip()
 
-        if action_type not in valid_actions:
-            logger.warning("Rule '%s' has unknown action '%s' and will be skipped", name, action_type)
+        if not action_type:
+            logger.warning("Rule '%s' action %s is missing a type and will be skipped", name, i + 1)
             return None
 
-        if action_type == "move" and not action.get("destination"):
-            logger.warning("Rule '%s' has a move action but no destination and will be skipped", name)
+        if action_type not in valid_actions:
+            logger.warning("Rule '%s' action %s has unknown type '%s' and will be skipped", name, i + 1, action_type)
+            return None
+
+        if action_type == "move" and not action.get("destination", "").strip():
+            logger.warning("Rule '%s' action %s is a move but has no destination and will be skipped", name, i + 1)
             return None
 
         validated_actions.append(action)
@@ -119,6 +146,7 @@ def _validate_rule(rule):
     return {
         "name": name,
         "match": match,
+        "learn": learn,
         "conditions": validated_conditions,
         "actions": validated_actions
     }

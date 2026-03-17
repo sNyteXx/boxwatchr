@@ -1,0 +1,52 @@
+FROM debian:trixie-slim
+
+# Install system dependencies, the rspamd repository, rspamd itself,
+# Python, pip, and supervisord all in one layer to keep the image small.
+# We clean up the apt cache at the end to reduce image size.
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    gnupg \
+    lsb-release \
+    python3 \
+    python3-pip \
+    supervisor \
+    && mkdir -p /etc/apt/keyrings \
+    && wget -O- https://rspamd.com/apt-stable/gpg.key | gpg --dearmor | tee /etc/apt/keyrings/rspamd.gpg > /dev/null \
+    && echo "deb [signed-by=/etc/apt/keyrings/rspamd.gpg] https://rspamd.com/apt-stable/ $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/rspamd.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends rspamd \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the supervisord config into the location supervisord expects.
+COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Copy the startup script and make it executable.
+COPY docker/start.sh /start.sh
+RUN chmod +x /start.sh
+
+# Set the working directory for the application.
+WORKDIR /app
+
+# Copy requirements first so Docker can cache the pip install layer.
+# This means pip only re-runs when requirements.txt actually changes.
+COPY requirements.txt .
+
+# Install Python dependencies.
+RUN pip install --break-system-packages --no-cache-dir -r requirements.txt
+
+# Copy the rest of the application code.
+COPY boxwatchr/ ./boxwatchr/
+COPY main.py .
+
+# The .env file and rules.yaml are NOT copied into the image.
+# They are mounted as a volume at runtime so users can edit them
+# without rebuilding the container.
+
+# Expose the rspamd web UI port and the Boxwatchr web dashboard port.
+EXPOSE 11334
+EXPOSE 8080
+
+# Run the startup script which configures rspamd and launches supervisord.
+CMD ["/start.sh"]
