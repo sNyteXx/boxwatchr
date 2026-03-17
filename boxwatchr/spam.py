@@ -95,16 +95,28 @@ def learn_ham(raw_message, email_id=None):
 
 
 def _learn(raw_message, learn_type, email_id=None):
-    url = f"http://{config.RSPAMD_HOST}:{config.RSPAMD_PORT}/learn{learn_type}"
+    url = f"http://{config.RSPAMD_HOST}:{config.RSPAMD_CONTROLLER_PORT}/learn{learn_type}"
     logger.debug("Submitting message to rspamd for %s learning at %s", learn_type, url, extra={"email_id": email_id})
 
     try:
         response = requests.post(
             url,
             data=raw_message,
-            headers={"Content-Type": "text/plain"},
+            headers={
+                "Content-Type": "text/plain",
+                "Password": config.RSPAMD_PASSWORD
+            },
             timeout=10
         )
+
+        if response.status_code == 404:
+            logger.info(
+                "rspamd %s learning skipped: %s",
+                learn_type,
+                response.text.strip(),
+                extra={"email_id": email_id}
+            )
+            return
 
         if response.status_code != 200:
             logger.error(

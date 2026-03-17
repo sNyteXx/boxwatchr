@@ -26,6 +26,9 @@ def load_rules(path):
 
     if not data or "rules" not in data or not data["rules"]:
         logger.warning("No rules found in %s", path)
+        with _rules_lock:
+            global _rules
+            _rules = []
         return []
 
     validated = []
@@ -43,9 +46,6 @@ def load_rules(path):
     return validated
 
 def _validate_rule(rule):
-    # Pull the name first so we can reference it in all warning messages.
-    # Unlike other fields, a missing name does not skip the rule but we
-    # do warn about it since unnamed rules are hard to identify in logs.
     name = rule.get("name", "").strip()
     if not name:
         logger.warning("A rule is missing a name and will be skipped")
@@ -161,9 +161,6 @@ def _extract_fields(email):
         return address
 
     def split_address(address):
-        # Break an email address into its parts. We use tldextract for
-        # the domain_root field so that email.nfl.com correctly gives
-        # "nfl" instead of "emailnfl" like a naive dot split would.
         address = strip_display_name(address).lower()
         if "@" not in address:
             return {
@@ -238,6 +235,7 @@ def _normalize(value):
     return re.sub(r'[^a-z0-9]', '', value.lower())
 
 def _apply_operator(operator, field_value, value, field_name, rule_name):
+    # Fields that get normalized before comparison.
     normalized_fields = {
         "sender_local", "sender_domain_name", "sender_domain_root",
         "recipient_local", "recipient_domain_name", "recipient_domain_root"
@@ -276,6 +274,7 @@ def _apply_operator(operator, field_value, value, field_name, rule_name):
         return bool(re.search(value, field_value))
 
     return False
+
 
 def evaluate(email):
     fields = _extract_fields(email)

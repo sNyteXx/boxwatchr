@@ -7,7 +7,7 @@ logger = get_logger("boxwatchr.database")
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "boxwatchr.db")
 
-CURRENT_VERSION = 1
+CURRENT_VERSION = 2
 
 def get_connection():
     conn = sqlite3.connect(DB_PATH)
@@ -59,9 +59,51 @@ def _migrate_v1(conn):
 
     logger.info("Migration to version 1 complete")
 
+def _migrate_v2(conn):
+    logger.info("Running migration to version 2")
+
+    conn.execute("ALTER TABLE emails RENAME TO emails_v1")
+    logger.debug("Renamed emails to emails_v1")
+
+    conn.execute("""
+        CREATE TABLE emails (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid INTEGER NOT NULL,
+            sender TEXT,
+            recipients TEXT,
+            subject TEXT,
+            date_received TEXT,
+            message_size INTEGER,
+            spam_score REAL,
+            rule_matched TEXT,
+            action_taken TEXT,
+            destination_folder TEXT,
+            raw_headers TEXT,
+            processed_at TEXT NOT NULL,
+            dry_run INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    logger.debug("Recreated emails table with uid as INTEGER")
+
+    conn.execute("""
+        INSERT INTO emails
+        SELECT id, CAST(uid AS INTEGER), sender, recipients, subject,
+               date_received, message_size, spam_score, rule_matched,
+               action_taken, destination_folder, raw_headers,
+               processed_at, dry_run
+        FROM emails_v1
+    """)
+    logger.debug("Copied rows from emails_v1 to emails")
+
+    conn.execute("DROP TABLE emails_v1")
+    logger.debug("Dropped emails_v1")
+
+    logger.info("Migration to version 2 complete")
+
 _MIGRATIONS = [
     None,
     _migrate_v1,
+    _migrate_v2,
 ]
 
 def initialize():

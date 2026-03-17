@@ -13,12 +13,15 @@ IMAP_POLL_INTERVAL = int(os.environ.get("IMAP_POLL_INTERVAL", "60"))
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 TESTING = os.environ.get("TESTING", "false").lower() == "true"
 
+SPAM_LEARNING = os.environ.get("SPAM_LEARNING", "both").lower()
 SPAM_THRESHOLD = float(os.environ.get("SPAM_THRESHOLD", "5.0"))
 SPAM_ACTION = os.environ.get("SPAM_ACTION", "move").lower()
 SPAM_FOLDER = os.environ.get("SPAM_FOLDER", "Junk")
 
 RSPAMD_HOST = os.environ.get("RSPAMD_HOST", "127.0.0.1")
 RSPAMD_PORT = int(os.environ.get("RSPAMD_PORT", "11333"))
+RSPAMD_CONTROLLER_PORT = int(os.environ.get("RSPAMD_CONTROLLER_PORT", "11334"))
+RSPAMD_PASSWORD = os.environ.get("RSPAMD_PASSWORD", "")
 
 WEB_PORT = int(os.environ.get("WEB_PORT", "8080"))
 WEB_PASSWORD = os.environ.get("WEB_PASSWORD", "")
