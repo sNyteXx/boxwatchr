@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     lsb-release \
     python3 \
     python3-pip \
+    redis-server \
     supervisor \
     && mkdir -p /etc/apt/keyrings \
     && wget -O- https://rspamd.com/apt-stable/gpg.key | gpg --dearmor | tee /etc/apt/keyrings/rspamd.gpg > /dev/null \

@@ -83,6 +83,7 @@ def _watch_idle(client, known_uids, callback):
             if responses:
                 current_uids = get_existing_uids(client)
                 new_uids = current_uids - known_uids
+                known_uids = current_uids
 
                 if new_uids:
                     logger.info("Detected %s new message(s)", len(new_uids))
@@ -90,8 +91,6 @@ def _watch_idle(client, known_uids, callback):
                         logger.debug("Processing new message UID %s", uid)
                         message = fetch_message(client, uid)
                         callback(uid, message)
-
-                    known_uids = current_uids
 
         except Exception as e:
             logger.error("Error during IDLE watch: %s", e)
@@ -105,6 +104,7 @@ def _watch_poll(client, known_uids, callback):
 
             current_uids = get_existing_uids(client)
             new_uids = current_uids - known_uids
+            known_uids = current_uids
 
             if new_uids:
                 logger.info("Detected %s new message(s)", len(new_uids))
@@ -112,8 +112,6 @@ def _watch_poll(client, known_uids, callback):
                     logger.debug("Processing new message UID %s", uid)
                     message = fetch_message(client, uid)
                     callback(uid, message)
-
-                known_uids = current_uids
             else:
                 logger.debug("No new messages found")
 

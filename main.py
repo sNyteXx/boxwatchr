@@ -1,10 +1,10 @@
 import os
 import time
 import requests
+from boxwatchr import config
 from boxwatchr.database import initialize
 from boxwatchr.rules import load_rules, watch_rules
 from boxwatchr.logger import get_logger
-from boxwatchr import config
 
 logger = get_logger("boxwatchr.main")
 

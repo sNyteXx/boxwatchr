@@ -12,6 +12,7 @@ _rules = []
 _rules_lock = threading.Lock()
 
 def load_rules(path):
+    global _rules
     logger.info("Loading rules from %s", path)
 
     try:
@@ -27,7 +28,6 @@ def load_rules(path):
     if not data or "rules" not in data or not data["rules"]:
         logger.warning("No rules found in %s", path)
         with _rules_lock:
-            global _rules
             _rules = []
         return []
 
@@ -40,7 +40,6 @@ def load_rules(path):
     logger.info("Loaded %s valid rule(s)", len(validated))
 
     with _rules_lock:
-        global _rules
         _rules = validated
 
     return validated
