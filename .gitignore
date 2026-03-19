@@ -135,7 +135,7 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
+config/.env
 .envrc
 .venv
 env/
@@ -210,4 +210,11 @@ __marimo__/
 *.db
 
 # Rules file
-rules.yaml
+config/rules.yaml
+
+# Claude helpers
+.claude/
+CLAUDE.md
+
+# Redis database
+dump.rdb

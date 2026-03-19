@@ -1,3 +1,4 @@
+import os
 import re
 import yaml
 import threading
@@ -10,6 +11,8 @@ logger = get_logger("boxwatchr.rules")
 
 _rules = []
 _rules_lock = threading.Lock()
+
+TERMINAL_ACTIONS = {"move", "delete", "junk"}
 
 def load_rules(path):
     global _rules
@@ -77,11 +80,13 @@ def _validate_rule(rule):
         "sender_domain_root", "sender_domain_tld",
         "recipient", "recipient_local", "recipient_domain", "recipient_domain_name",
         "recipient_domain_root", "recipient_domain_tld",
-        "subject", "raw_headers"
+        "subject", "raw_headers",
+        "attachment_name", "attachment_extension", "attachment_content_type",
     }
 
-    valid_operators = {"equals", "contains", "regex"}
-    valid_actions = {"move", "delete", "junk"}
+    valid_operators = {"equals", "contains", "is_empty"}
+    valid_actions = {"move", "delete", "junk", "mark_read", "mark_unread"}
+    contradictory_pairs = [{"mark_read", "mark_unread"}]
 
     validated_conditions = []
     for i, condition in enumerate(rule["conditions"]):
@@ -109,12 +114,9 @@ def _validate_rule(rule):
             logger.warning("Rule '%s' condition %s has unknown operator '%s' and will be skipped", name, i + 1, operator)
             return None
 
-        if operator == "regex":
-            try:
-                re.compile(str(value))
-            except re.error as e:
-                logger.warning("Rule '%s' condition %s has an invalid regex '%s': %s and will be skipped", name, i + 1, value, e)
-                return None
+        if operator == "is_empty" and str(value).lower() not in ("true", "false"):
+            logger.warning("Rule '%s' condition %s uses is_empty but value must be true or false and will be skipped", name, i + 1)
+            return None
 
         validated_conditions.append({
             "field": field,
@@ -128,17 +130,46 @@ def _validate_rule(rule):
 
         if not action_type:
             logger.warning("Rule '%s' action %s is missing a type and will be skipped", name, i + 1)
-            return None
+            continue
 
         if action_type not in valid_actions:
             logger.warning("Rule '%s' action %s has unknown type '%s' and will be skipped", name, i + 1, action_type)
-            return None
+            continue
 
         if action_type == "move" and not action.get("destination", "").strip():
             logger.warning("Rule '%s' action %s is a move but has no destination and will be skipped", name, i + 1)
-            return None
+            continue
 
         validated_actions.append(action)
+
+    if not validated_actions:
+        logger.warning("Rule '%s' has no valid actions after validation and will be skipped", name)
+        return None
+
+    seen_types = []
+    for action in validated_actions:
+        action_type = action["type"]
+        if action_type in seen_types:
+            logger.warning("Rule '%s' has duplicate action type '%s' and will be skipped", name, action_type)
+            return None
+        seen_types.append(action_type)
+
+    terminal_count = sum(1 for a in validated_actions if a["type"] in TERMINAL_ACTIONS)
+    if terminal_count > 1:
+        logger.warning(
+            "Rule '%s' has more than one terminal action (%s) and will be skipped",
+            name, "/".join(sorted(TERMINAL_ACTIONS))
+        )
+        return None
+
+    action_types = {a["type"] for a in validated_actions}
+    for pair in contradictory_pairs:
+        if pair.issubset(action_types):
+            logger.warning(
+                "Rule '%s' has contradictory actions %s and will be skipped",
+                name, " and ".join(sorted(pair))
+            )
+            return None
 
     logger.debug("Rule '%s' validated successfully", name)
 
@@ -171,12 +202,10 @@ def _extract_fields(email):
                 "tld": ""
             }
         local, domain = address.split("@", 1)
-        parts = domain.rsplit(".", 1)
-        domain_name = parts[0] if len(parts) == 2 else domain
-        tld = parts[1] if len(parts) == 2 else ""
-
         extracted = tldextract.extract(domain)
         domain_root = extracted.domain
+        tld = extracted.suffix
+        domain_name = f"{extracted.subdomain}.{extracted.domain}" if extracted.subdomain else extracted.domain
 
         return {
             "full": address,
@@ -191,9 +220,18 @@ def _extract_fields(email):
     subject = email.get("subject", "")
     recipients = email.get("recipients", [])
     raw_headers = email.get("raw_headers", "")
+    raw_attachments = email.get("attachments", [])
 
     sender_parts = split_address(sender)
     recipient_parts = [split_address(r) for r in recipients]
+    attachment_parts = [
+        {
+            "name": a.get("name", "").lower(),
+            "extension": a.get("extension", "").lower(),
+            "content_type": a.get("content_type", "").lower(),
+        }
+        for a in raw_attachments
+    ]
 
     return {
         "sender": sender_parts["full"],
@@ -204,7 +242,8 @@ def _extract_fields(email):
         "sender_domain_tld": sender_parts["tld"],
         "recipients": recipient_parts,
         "subject": subject.lower(),
-        "raw_headers": raw_headers.lower()
+        "raw_headers": raw_headers.lower(),
+        "attachments": attachment_parts,
     }
 
 def _match_condition(condition, fields, rule_name):
@@ -222,19 +261,40 @@ def _match_condition(condition, fields, rule_name):
             "recipient_domain_tld": "tld"
         }.get(field)
 
+        if not fields["recipients"]:
+            return _apply_operator(operator, "", value, field, rule_name)
+
         return any(
             _apply_operator(operator, r.get(recipient_key, ""), value, field, rule_name)
             for r in fields["recipients"]
+        )
+
+    if field.startswith("attachment"):
+        attachment_key = {
+            "attachment_name": "name",
+            "attachment_extension": "extension",
+            "attachment_content_type": "content_type",
+        }.get(field)
+
+        if not fields["attachments"]:
+            return _apply_operator(operator, "", value, field, rule_name)
+
+        return any(
+            _apply_operator(operator, a.get(attachment_key, ""), value, field, rule_name)
+            for a in fields["attachments"]
         )
 
     field_value = fields.get(field, "")
     return _apply_operator(operator, field_value, value, field, rule_name)
 
 def _normalize(value):
-    return re.sub(r'[^a-z0-9]', '', value.lower())
+    return re.sub(r"[^a-z0-9]", "", value.lower())
 
 def _apply_operator(operator, field_value, value, field_name, rule_name):
-    # Fields that get normalized before comparison.
+    if operator == "is_empty":
+        is_empty = field_value == ""
+        return is_empty if value == "true" else not is_empty
+
     normalized_fields = {
         "sender_local", "sender_domain_name", "sender_domain_root",
         "recipient_local", "recipient_domain_name", "recipient_domain_root"
@@ -248,8 +308,8 @@ def _apply_operator(operator, field_value, value, field_name, rule_name):
             result = normalized_field == normalized_value
             if result and normalized_field != field_value.lower():
                 logger.debug(
-                    "Rule '%s' matched because '%s' normalized to '%s' matches '%s'",
-                    rule_name, field_value, normalized_field, value
+                    "Rule matched because '%s' normalized to '%s' matches '%s'",
+                    field_value, normalized_field, value
                 )
             return result
 
@@ -257,26 +317,21 @@ def _apply_operator(operator, field_value, value, field_name, rule_name):
             result = normalized_value in normalized_field
             if result and normalized_field != field_value.lower():
                 logger.debug(
-                    "Rule '%s' matched because '%s' normalized to '%s' contains '%s'",
-                    rule_name, field_value, normalized_field, value
+                    "Rule matched because '%s' normalized to '%s' contains '%s'",
+                    field_value, normalized_field, value
                 )
             return result
-
-        if operator == "regex":
-            return bool(re.search(normalized_value, normalized_field))
 
     if operator == "equals":
         return field_value == value
     if operator == "contains":
         return value in field_value
-    if operator == "regex":
-        return bool(re.search(value, field_value))
 
     return False
 
-
 def evaluate(email):
     fields = _extract_fields(email)
+    logger.debug("Evaluating rules for email from %s", fields.get("sender", "unknown"))
 
     with _rules_lock:
         rules = list(_rules)
@@ -314,6 +369,6 @@ def watch_rules(path):
     logger.info("Watching rules file for changes: %s", path)
     event_handler = _RulesFileHandler(path)
     observer = Observer()
-    observer.schedule(event_handler, path=".", recursive=False)
+    observer.schedule(event_handler, path=os.path.dirname(os.path.abspath(path)), recursive=False)
     observer.start()
     return observer

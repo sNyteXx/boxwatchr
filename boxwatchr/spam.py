@@ -4,15 +4,13 @@ from boxwatchr.logger import get_logger
 
 logger = get_logger("boxwatchr.spam")
 
-RSPAMD_URL = f"http://{config.RSPAMD_HOST}:{config.RSPAMD_PORT}/checkv2"
-
-
 def check(raw_message, email_id=None):
-    logger.debug("Submitting message to rspamd at %s", RSPAMD_URL, extra={"email_id": email_id})
+    url = f"http://{config.RSPAMD_HOST}:{config.RSPAMD_PORT}/checkv2"
+    logger.debug("Submitting message to rspamd at %s", url, extra={"email_id": email_id})
 
     try:
         response = requests.post(
-            RSPAMD_URL,
+            url,
             data=raw_message,
             headers={"Content-Type": "text/plain"},
             timeout=10
@@ -79,7 +77,7 @@ def check(raw_message, email_id=None):
         return None
 
     except requests.exceptions.ConnectionError:
-        logger.error("Could not connect to rspamd at %s", RSPAMD_URL, extra={"email_id": email_id})
+        logger.error("Could not connect to rspamd at %s", url, extra={"email_id": email_id})
         return None
 
     except Exception as e:
@@ -89,10 +87,8 @@ def check(raw_message, email_id=None):
 def learn_spam(raw_message, email_id=None):
     _learn(raw_message, "spam", email_id)
 
-
 def learn_ham(raw_message, email_id=None):
     _learn(raw_message, "ham", email_id)
-
 
 def _learn(raw_message, learn_type, email_id=None):
     url = f"http://{config.RSPAMD_HOST}:{config.RSPAMD_CONTROLLER_PORT}/learn{learn_type}"
@@ -109,17 +105,8 @@ def _learn(raw_message, learn_type, email_id=None):
             timeout=10
         )
 
-        if response.status_code == 404:
-            logger.info(
-                "rspamd %s learning skipped: %s",
-                learn_type,
-                response.text.strip(),
-                extra={"email_id": email_id}
-            )
-            return
-
         if response.status_code != 200:
-            logger.error(
+            logger.warning(
                 "rspamd learning returned status %s: %s",
                 response.status_code,
                 response.text,

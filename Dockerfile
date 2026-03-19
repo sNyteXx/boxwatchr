@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     redis-server \
     supervisor \
+    unbound \
     && mkdir -p /etc/apt/keyrings \
     && wget -O- https://rspamd.com/apt-stable/gpg.key | gpg --dearmor | tee /etc/apt/keyrings/rspamd.gpg > /dev/null \
     && echo "deb [signed-by=/etc/apt/keyrings/rspamd.gpg] https://rspamd.com/apt-stable/ $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/rspamd.list \
@@ -22,6 +23,9 @@ RUN apt-get update && apt-get install -y \
 
 # Copy the supervisord config into the location supervisord expects.
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Copy the unbound config.
+COPY docker/unbound.conf /etc/unbound/unbound.conf
 
 # Copy the startup script and make it executable.
 COPY docker/start.sh /start.sh
@@ -45,7 +49,7 @@ COPY main.py .
 # They are mounted as a volume at runtime so users can edit them
 # without rebuilding the container.
 
-# Expose the rspamd web UI port and the Boxwatchr web dashboard port.
+# Expose the rspamd web UI port and the boxwatchr web dashboard port.
 EXPOSE 11334
 EXPOSE 8080
 

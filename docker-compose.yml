@@ -7,13 +7,15 @@ services:
       - "${WEB_PORT:-8080}:8080"
       - "11334:11334"
     volumes:
-      - ./.env:/app/.env:ro
-      - ./rules.yaml:/app/rules.yaml:ro
-      - ./boxwatchr.db:/app/boxwatchr.db
-      # Place custom rspamd config files in ./rspamd/local.d to override
-      # rspamd defaults. See https://rspamd.com/doc/configuration/ for options.
-      # The worker-controller.inc file is generated automatically from
-      # RSPAMD_PASSWORD in your .env file. Do not create it here manually.
-      - ./rspamd/local.d:/config/rspamd/local.d:ro
+      - ./config:/app/config:ro
+      - ./data:/app/data
+      - ./boxwatchr:/app/boxwatchr:ro
+      - ./main.py:/app/main.py:ro
     env_file:
-      - .env
+      - ./config/.env
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG && curl -sf http://127.0.0.1:11334/ping > /dev/null && supervisorctl status unbound | grep -q RUNNING && supervisorctl status boxwatchr | grep -q RUNNING"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
