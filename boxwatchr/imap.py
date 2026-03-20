@@ -47,13 +47,12 @@ def fetch_message(client, uid):
 def list_folder_names(client):
     try:
         folders = client.list_folders()
-        return {name for _flags, _delim, name in folders}
+        return [name for _flags, _delim, name in folders]
     except Exception as e:
         logger.error("Failed to list IMAP folders: %s", e)
         raise
 
 def detect_special_folders(client):
-    logger.debug("Detecting special-use folders from server")
     try:
         folders = client.list_folders()
     except Exception as e:
@@ -69,7 +68,6 @@ def detect_special_folders(client):
         if ("\\Junk" in flag_set or "\\Spam" in flag_set) and junk is None:
             junk = name
 
-    logger.debug("Special-use detection: trash=%s, junk=%s", trash, junk)
     return trash, junk
 
 def get_existing_uids(client):

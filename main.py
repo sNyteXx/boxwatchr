@@ -4,23 +4,50 @@ import signal
 import time
 import uuid
 import json
+import pyfiglet
 from datetime import datetime, timezone
 from email.header import decode_header, make_header
 from email import message_from_bytes, message_from_string
 from boxwatchr import config, imap, spam, rules, health
 from boxwatchr.web.dashboard import start_dashboard
 from boxwatchr.imap import FatalImapError
-from boxwatchr.database import initialize, start_flusher, verify, set_processing, clear_email_id_from_logs, enqueue_email, enqueue_email_update, flush, get_known_uids, get_unprocessed_emails, get_email_by_message_id, update_email_uid, relink_logs_to_email
-from boxwatchr.rules import load_rules, watch_rules, TERMINAL_ACTIONS
+from boxwatchr.database import set_processing, clear_email_id_from_logs, enqueue_email, enqueue_email_update, get_known_uids, get_unprocessed_emails, get_email_by_message_id, update_email_uid, relink_logs_to_email
+from boxwatchr.rules import watch_rules, TERMINAL_ACTIONS
 from boxwatchr.logger import get_logger
 
 logger = get_logger("boxwatchr.main")
 
+
+def _print_banner():
+    art = pyfiglet.figlet_format("boxwatchr", font="slant")
+    lines = art.rstrip().split("\n")
+    width = max(len(line) for line in lines)
+    print(art.rstrip(), flush=True)
+    print("v1.0.0".center(width), flush=True)
+    print(flush=True)
+
+
+def _print_startup_checks(loaded_rules):
+    divider = "=" * 35
+    print(divider, flush=True)
+    print("boxwatchr checks", flush=True)
+    print(divider, flush=True)
+    print("RSPAMD password configured", flush=True)
+    print("IMAP server: %s:%s" % (config.IMAP_HOST, config.IMAP_PORT), flush=True)
+    print("Monitoring folder: %s" % config.IMAP_FOLDER, flush=True)
+    print("Trash folder: %s" % config.IMAP_TRASH_FOLDER, flush=True)
+    print("Spam folder: %s" % config.IMAP_SPAM_FOLDER, flush=True)
+    print("Dry run: %s" % ("enabled" if config.DRYRUN else "disabled"), flush=True)
+    print("Spam threshold: %.1f, action: %s" % (config.SPAM_THRESHOLD, config.SPAM_ACTION), flush=True)
+    print("Spam learning: %s, ham threshold: %.1f" % (config.SPAM_LEARNING, config.HAM_THRESHOLD), flush=True)
+    print("Rules loaded: %d" % len(loaded_rules), flush=True)
+    print(flush=True)
+
+
 def _fatal_exit(message):
-    logger.error("Fatal error: %s. Shutting down.", message)
-    flush()
-    os.kill(1, signal.SIGTERM)
-    sys.exit(2)
+    logger.error("Fatal error: %s", message)
+    logger.error("Shutting down.")
+    health.fatal_shutdown()
 
 def _decode(value):
     if isinstance(value, bytes):
@@ -123,23 +150,6 @@ def _learn_sentence(learn_type, dry_run):
             return "Submitted to rspamd as spam."
     return ""
 
-def _verify_rule_destinations(client, loaded_rules):
-    destinations = {
-        action["destination"]
-        for rule in loaded_rules
-        for action in rule["actions"]
-        if action["type"] == "move"
-    }
-    if not destinations:
-        return
-    try:
-        folder_names = imap.list_folder_names(client)
-    except Exception as e:
-        _fatal_exit("Could not list IMAP folders to verify rule destinations: %s" % e)
-    missing = [d for d in sorted(destinations) if d not in folder_names]
-    if missing:
-        _fatal_exit("Rule destination folder(s) not found on server: %s" % ", ".join(missing))
-    logger.info("All rule destination folders verified on server")
 
 def _should_learn(learn_type):
     return (
@@ -497,61 +507,22 @@ def process_email(client, uid, message):
         set_processing(False)
 
 def main():
-    try:
-        initialize()
-        start_flusher()
-        verify()
-    except Exception as e:
-        _fatal_exit("Database initialization failed: %s" % e)
-    start_dashboard()
+    _print_banner()
 
     logger.info("boxwatchr starting up")
-    logger.info("Dry run mode: %s", config.DRYRUN)
-    logger.info("Log level: %s", config.LOG_LEVEL)
-    logger.info("IMAP host: %s:%s, folder: %s", config.IMAP_HOST, config.IMAP_PORT, config.IMAP_FOLDER)
-    logger.info("Spam threshold: %.1f, action: %s", config.SPAM_THRESHOLD, config.SPAM_ACTION)
-    logger.info("Spam learning: %s, ham threshold: %.1f", config.SPAM_LEARNING, config.HAM_THRESHOLD)
 
-    health.wait_for_services(startup=True)
+    health.initialize_database()
+    health.start_services_sequentially()
+
+    loaded_rules = health.load_rules_startup("config/rules.yaml")
+
+    health.start_imap(loaded_rules)
+
+    _print_startup_checks(loaded_rules)
+
     health.start_monitor()
+    start_dashboard()
 
-    if not config.IMAP_TRASH_FOLDER or not config.IMAP_SPAM_FOLDER:
-        _detect_client = imap.connect()
-        try:
-            detected_trash, detected_junk = imap.detect_special_folders(_detect_client)
-        finally:
-            _detect_client.logout()
-
-        if not config.IMAP_TRASH_FOLDER:
-            if detected_trash:
-                config.IMAP_TRASH_FOLDER = detected_trash
-                logger.info("Trash folder auto-detected: %s", config.IMAP_TRASH_FOLDER)
-            else:
-                _fatal_exit("Trash folder not configured and could not be detected from server. Set IMAP_TRASH_FOLDER in .env")
-
-        if not config.IMAP_SPAM_FOLDER:
-            if detected_junk:
-                config.IMAP_SPAM_FOLDER = detected_junk
-                logger.info("Spam folder auto-detected: %s", config.IMAP_SPAM_FOLDER)
-            else:
-                _fatal_exit("Spam folder not configured and could not be detected from server. Set IMAP_SPAM_FOLDER in .env")
-
-    logger.info("Trash folder: %s, spam folder: %s", config.IMAP_TRASH_FOLDER, config.IMAP_SPAM_FOLDER)
-
-    logger.info("Loading rules from config/rules.yaml")
-    loaded_rules = []
-    try:
-        loaded_rules = load_rules("config/rules.yaml")
-    except Exception:
-        _fatal_exit("Cannot start: fix config/rules.yaml and restart")
-
-    _dest_client = imap.connect()
-    try:
-        _verify_rule_destinations(_dest_client, loaded_rules)
-    finally:
-        _dest_client.logout()
-
-    logger.info("Watching config/rules.yaml for changes")
     observer = watch_rules("config/rules.yaml")
 
     logger.info("boxwatchr is running")

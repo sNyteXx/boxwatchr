@@ -1,8 +1,6 @@
 #!/bin/sh
 set -e
 
-echo "Starting boxwatchr..."
-
 mkdir -p /etc/rspamd/local.d
 mkdir -p /app/data/redis
 
@@ -11,7 +9,6 @@ if [ -z "$RSPAMD_PASSWORD" ]; then
     exit 1
 fi
 
-echo "Generating rspamd password hash..."
 RSPAMD_HASH=$(rspamadm pw -q -p "$RSPAMD_PASSWORD")
 
 cat > /etc/rspamd/local.d/worker-controller.inc << EOF
@@ -20,8 +17,6 @@ cat > /etc/rspamd/local.d/worker-controller.inc << EOF
 password = "$RSPAMD_HASH";
 bind_socket = "*:11334";
 EOF
-
-echo "rspamd password configured successfully"
 
 if [ -d "/app/config/rspamd/local.d" ]; then
     cp /app/config/rspamd/local.d/* /etc/rspamd/local.d/ 2>/dev/null || true
@@ -42,5 +37,7 @@ dns {
 }
 EOF
 
-echo "Launching supervisord..."
+SUPERVISOR_PASSWORD=$(head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 24)
+export SUPERVISOR_PASSWORD
+
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf

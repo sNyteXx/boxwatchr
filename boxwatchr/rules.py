@@ -16,7 +16,6 @@ TERMINAL_ACTIONS = {"move", "delete", "junk"}
 
 def load_rules(path):
     global _rules
-    logger.info("Loading rules from %s", path)
 
     try:
         with open(path, "r") as f:
@@ -39,8 +38,6 @@ def load_rules(path):
         result = _validate_rule(rule)
         if result:
             validated.append(result)
-
-    logger.info("Loaded %s valid rule(s)", len(validated))
 
     with _rules_lock:
         _rules = validated
@@ -170,8 +167,6 @@ def _validate_rule(rule):
                 name, " and ".join(sorted(pair))
             )
             return None
-
-    logger.debug("Rule '%s' validated successfully", name)
 
     return {
         "name": name,
@@ -361,7 +356,8 @@ class _RulesFileHandler(FileSystemEventHandler):
         if event.src_path.endswith(self.path):
             logger.info("Rules file changed, reloading")
             try:
-                load_rules(self.path)
+                loaded = load_rules(self.path)
+                logger.info("Reloaded %s valid rule(s)", len(loaded))
             except Exception as e:
                 logger.error("Failed to reload rules: %s", e)
 

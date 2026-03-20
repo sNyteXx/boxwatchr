@@ -103,16 +103,12 @@ _MIGRATIONS = [
 
 def initialize():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    logger.info("Initializing database at %s", DB_PATH)
 
     try:
         conn = get_connection()
         current_version = _get_version(conn)
-        logger.debug("Current database version: %s", current_version)
-        logger.debug("Required database version: %s", CURRENT_VERSION)
 
         if current_version == CURRENT_VERSION:
-            logger.info("Database is up to date at version %s", CURRENT_VERSION)
             conn.close()
             return
 
@@ -148,7 +144,6 @@ def start_flusher():
         _flusher_started = True
     t = threading.Thread(target=_flush_loop, daemon=True, name="db-flusher")
     t.start()
-    logger.debug("Database flusher thread started")
 
 def _flush_loop():
     global _flush_failures
@@ -387,8 +382,6 @@ def enqueue_email_update(email_id, rule_matched, actions, processed, processed_a
         })
 
 def verify():
-    logger.debug("Verifying database integrity")
-
     if not os.path.exists(DB_PATH):
         raise RuntimeError(f"Database file not found at {DB_PATH}")
 
@@ -410,7 +403,6 @@ def verify():
             raise RuntimeError(f"Database missing expected tables: {missing}")
 
         conn.close()
-        logger.debug("Database verification passed (version=%s, tables=%s)", version, sorted(found_tables))
 
     except sqlite3.Error as e:
         logger.error("Database verification failed: %s", e)

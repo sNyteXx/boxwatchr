@@ -1,3 +1,4 @@
+import sys
 import logging
 from datetime import datetime, timezone
 from boxwatchr import config
@@ -18,7 +19,7 @@ def get_logger(name):
     logger.setLevel(config.LOG_LEVEL)
 
     if not logger.handlers:
-        stream_handler = logging.StreamHandler()
+        stream_handler = logging.StreamHandler(sys.stdout)
         stream_handler.setLevel(config.LOG_LEVEL)
 
         formatter = logging.Formatter(

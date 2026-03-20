@@ -2,7 +2,7 @@ services:
   boxwatchr:
     build: .
     container_name: boxwatchr
-    restart: unless-stopped
+    restart: on-failure
     ports:
       - "${WEB_PORT:-8143}:80"
       - "11334:11334"
