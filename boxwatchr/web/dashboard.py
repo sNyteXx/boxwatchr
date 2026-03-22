@@ -392,6 +392,10 @@ def _save_app_config(form):
 @app.route("/setup", methods=["GET"])
 def setup():
     if config.SETUP_COMPLETE:
+        if session.pop("setup_done", False):
+            return render_template("setup.html", completed=True, levels=_LEVELS,
+                                   tls_modes=_TLS_MODES,
+                                   show_logout=False, setup_mode=True)
         return redirect(url_for("index"))
     return render_template("setup.html", levels=_LEVELS, tls_modes=_TLS_MODES,
                            show_logout=False, setup_mode=True)
@@ -427,9 +431,8 @@ def setup_post():
     config.reload()
 
     logger.info("Setup completed. Restart the container to begin monitoring.")
-    return render_template("setup.html", completed=True, levels=_LEVELS,
-                           tls_modes=_TLS_MODES,
-                           show_logout=False, setup_mode=True)
+    session["setup_done"] = True
+    return redirect(url_for("setup"))
 
 @app.route("/api/test-imap", methods=["POST"])
 def test_imap():
