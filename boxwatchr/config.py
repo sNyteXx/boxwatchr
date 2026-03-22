@@ -1,30 +1,84 @@
 import os
-from dotenv import load_dotenv
+import json
+import logging
 
-load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", ".env"))
-
-IMAP_HOST = os.environ.get("IMAP_HOST", "")
-IMAP_PORT = int(os.environ.get("IMAP_PORT", "993"))
-IMAP_USERNAME = os.environ.get("IMAP_USERNAME", "")
-IMAP_PASSWORD = os.environ.get("IMAP_PASSWORD", "")
-IMAP_FOLDER = os.environ.get("IMAP_FOLDER", "INBOX")
-IMAP_POLL_INTERVAL = int(os.environ.get("IMAP_POLL_INTERVAL", "60"))
-IMAP_TRASH_FOLDER = os.environ.get("IMAP_TRASH_FOLDER", "") or None
-IMAP_SPAM_FOLDER = os.environ.get("IMAP_SPAM_FOLDER", "") or None
-
-LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
-DRYRUN = os.environ.get("DRYRUN", "false").lower() == "true"
-
-SPAM_LEARNING = os.environ.get("SPAM_LEARNING", "both").lower()
-SPAM_THRESHOLD = float(os.environ.get("SPAM_THRESHOLD", "5.0"))
-SPAM_ACTION = os.environ.get("SPAM_ACTION", "junk").lower()
-HAM_THRESHOLD = float(os.environ.get("HAM_THRESHOLD", "2.0"))
-
-RSPAMD_HOST = os.environ.get("RSPAMD_HOST", "127.0.0.1")
-RSPAMD_PORT = int(os.environ.get("RSPAMD_PORT", "11333"))
-RSPAMD_CONTROLLER_PORT = int(os.environ.get("RSPAMD_CONTROLLER_PORT", "11334"))
+# Infrastructure settings — read from environment, needed before the DB is available.
+# These are Docker/container-level concerns, not app config.
+RSPAMD_HOST = "127.0.0.1"
+RSPAMD_PORT = 11333
+RSPAMD_CONTROLLER_PORT = 11334
 RSPAMD_PASSWORD = os.environ.get("RSPAMD_PASSWORD", "")
 
-WEB_PASSWORD = os.environ.get("WEB_PASSWORD", "")
+RULES_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "rules.yaml")
 
-DB_PRUNE_DAYS = int(os.environ.get("DB_PRUNE_DAYS", "0"))
+# App settings — defaults only. Overridden by load() after database.initialize().
+SETUP_COMPLETE = False
+
+IMAP_ACCOUNTS = []
+IMAP_HOST = ""
+IMAP_PORT = 993
+IMAP_USERNAME = ""
+IMAP_PASSWORD = ""
+IMAP_FOLDER = "INBOX"
+IMAP_POLL_INTERVAL = 60
+IMAP_TRASH_FOLDER = None
+IMAP_SPAM_FOLDER = None
+IMAP_TLS_MODE = "ssl"
+
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+DRYRUN = False
+SPAM_THRESHOLD = 6.0
+SPAM_ACTION = "spam"
+SPAM_LEARNING = "both"
+HAM_THRESHOLD = 2.0
+WEB_PASSWORD = ""
+DB_PRUNE_DAYS = 0
+
+def load():
+    """Load app settings from the config table. Call after database.initialize()."""
+    from boxwatchr.database import get_config
+    global SETUP_COMPLETE
+    global IMAP_ACCOUNTS, IMAP_HOST, IMAP_PORT, IMAP_USERNAME, IMAP_PASSWORD
+    global IMAP_FOLDER, IMAP_POLL_INTERVAL, IMAP_TRASH_FOLDER, IMAP_SPAM_FOLDER, IMAP_TLS_MODE
+    global LOG_LEVEL, DRYRUN, SPAM_THRESHOLD, SPAM_ACTION, SPAM_LEARNING
+    global HAM_THRESHOLD, WEB_PASSWORD, DB_PRUNE_DAYS
+
+    SETUP_COMPLETE = get_config("setup_complete", "false") == "true"
+
+    try:
+        IMAP_ACCOUNTS = json.loads(get_config("imap_accounts", "[]"))
+    except (json.JSONDecodeError, TypeError):
+        IMAP_ACCOUNTS = []
+
+    if IMAP_ACCOUNTS:
+        acc = IMAP_ACCOUNTS[0]
+        IMAP_HOST = acc.get("host", "")
+        IMAP_PORT = int(acc.get("port", 993))
+        IMAP_USERNAME = acc.get("username", "")
+        IMAP_PASSWORD = acc.get("password", "")
+        IMAP_FOLDER = acc.get("folder", "INBOX")
+        IMAP_POLL_INTERVAL = int(acc.get("poll_interval", 60))
+        IMAP_TRASH_FOLDER = acc.get("trash_folder") or None
+        IMAP_SPAM_FOLDER = acc.get("spam_folder") or None
+        IMAP_TLS_MODE = acc.get("tls_mode", "ssl")
+
+    LOG_LEVEL = get_config("log_level", LOG_LEVEL).upper()
+    DRYRUN = get_config("dry_run", "false") == "true"
+    SPAM_THRESHOLD = float(get_config("spam_threshold", "6.0"))
+    SPAM_ACTION = get_config("spam_action", "spam")
+    SPAM_LEARNING = get_config("spam_learning", "both")
+    HAM_THRESHOLD = float(get_config("ham_threshold", "2.0"))
+    WEB_PASSWORD = get_config("web_password", "")
+    DB_PRUNE_DAYS = int(get_config("db_prune_days", "0"))
+
+    _update_log_level()
+
+def reload():
+    load()
+
+def _update_log_level():
+    for name in logging.Logger.manager.loggerDict:
+        log = logging.getLogger(name)
+        for handler in log.handlers:
+            if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
+                handler.setLevel(LOG_LEVEL)

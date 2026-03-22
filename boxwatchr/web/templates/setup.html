@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block title %}boxwatchr | Setup{% endblock %}
+
+{% block content %}
+{% if completed %}
+<div class="text-center py-5">
+    <h1 class="h4 fw-semibold mb-3">Setup Complete</h1>
+    <p class="text-secondary mb-4">Your configuration has been saved. Restart the container to begin monitoring.</p>
+    <code class="d-block text-secondary small">docker compose restart</code>
+</div>
+{% else %}
+<h1 class="h4 fw-semibold mb-1">Setup</h1>
+<p class="text-secondary small mb-4">Configure boxwatchr before it starts monitoring your inbox.</p>
+
+{% if errors %}
+<div class="alert alert-danger mb-4">
+    <ul class="mb-0 ps-3">
+        {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<form method="post" action="/setup" id="setup-form">
+<input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h2 class="card-subtitle text-secondary text-uppercase small fw-semibold mb-3">IMAP Account</h2>
+            <div class="row g-3 mb-3">
+                <div class="col-12 col-md-6">
+                    <label class="form-label small">Account Name</label>
+                    <input type="text" name="account_name" class="form-control" value="Default" placeholder="Default">
+                </div>
+            </div>
+            <div class="row g-3 mb-3">
+                <div class="col-12 col-md-6">
+                    <label class="form-label small">IMAP Host <span class="text-danger">*</span></label>
+                    <input type="text" name="imap_host" id="imap_host" class="form-control" placeholder="imap.example.com" value="{{ request.form.imap_host or '' }}" required>
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label small">Port</label>
+                    <input type="number" name="imap_port" id="imap_port" class="form-control" value="{{ request.form.imap_port or '993' }}">
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label small">TLS Mode</label>
+                    <select name="tls_mode" id="tls_mode" class="form-select">
+                        {% for mode in tls_modes %}
+                        <option value="{{ mode }}" {% if mode == 'ssl' %}selected{% endif %}>{{ mode }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="row g-3 mb-3">
+                <div class="col-12 col-md-6">
+                    <label class="form-label small">Username <span class="text-danger">*</span></label>
+                    <input type="text" name="imap_username" id="imap_username" class="form-control" placeholder="you@example.com" value="{{ request.form.imap_username or '' }}" autocomplete="username" required>
+                </div>
+                <div class="col-12 col-md-6">
+                    <label class="form-label small">Password <span class="text-danger">*</span></label>
+                    <input type="password" name="imap_password" id="imap_password" class="form-control" autocomplete="current-password" required>
+                </div>
+            </div>
+            <div class="mb-3">
+                <button type="button" id="test-btn" class="btn btn-sm btn-outline-secondary">Test Credentials</button>
+                <span id="test-status" class="small ms-2"></span>
+            </div>
+            <div class="row g-3">
+                <div class="col-12 col-md-6">
+                    <label class="form-label small">Watch Folder <span class="text-danger">*</span></label>
+                    <select name="imap_folder" id="imap_folder" class="form-select" disabled required>
+                        <option value="">Test credentials to load folders</option>
+                    </select>
+                    <div class="form-text">The folder boxwatchr will monitor for new mail.</div>
+                </div>
+                <div class="col-12 col-md-6">
+                    <label class="form-label small">Trash Folder</label>
+                    <select name="imap_trash_folder" id="imap_trash_folder" class="form-select" disabled>
+                        <option value="">Auto-detect</option>
+                    </select>
+                    <div class="form-text">Auto-detected from your server after testing credentials. Select manually if not detected.</div>
+                </div>
+                <div class="col-12 col-md-6">
+                    <label class="form-label small">Spam Folder</label>
+                    <select name="imap_spam_folder" id="imap_spam_folder" class="form-select" disabled>
+                        <option value="">Auto-detect</option>
+                    </select>
+                    <div class="form-text">Auto-detected from your server after testing credentials. Select manually if not detected.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h2 class="card-subtitle text-secondary text-uppercase small fw-semibold mb-3">Spam Handling</h2>
+            <div class="row g-3">
+                <div class="col-12 col-md-4">
+                    <label class="form-label small">Spam Score Threshold</label>
+                    <input type="number" step="0.1" name="spam_threshold" class="form-control" value="6.0">
+                    <div class="form-text">Emails scoring at or above this are treated as spam.</div>
+                </div>
+                <div class="col-12 col-md-4">
+                    <label class="form-label small">Action for Spam-Scored Emails</label>
+                    <select name="spam_action" class="form-select">
+                        {% for opt in spam_actions %}
+                        <option value="{{ opt }}" {% if opt == "spam" %}selected{% endif %}>
+                            {% if opt == "spam" %}Move to spam folder{% else %}Move to trash folder{% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">Applied when no rule matches and rspamd score exceeds the threshold.</div>
+                </div>
+                <div class="col-12 col-md-4">
+                    <label class="form-label small">Automatic rspamd Learning</label>
+                    <select name="spam_learning" class="form-select">
+                        {% for opt in spam_learning_options %}
+                        <option value="{{ opt }}" {% if opt == "both" %}selected{% endif %}>{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-4">
+                    <label class="form-label small">Ham Score Threshold</label>
+                    <input type="number" step="0.1" name="ham_threshold" class="form-control" value="2.0">
+                    <div class="form-text">Emails scoring at or below this are submitted to rspamd as ham.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h2 class="card-subtitle text-secondary text-uppercase small fw-semibold mb-3">Application</h2>
+            <div class="row g-3">
+                <div class="col-12 col-md-4">
+                    <label class="form-label small">Log Level</label>
+                    <select name="log_level" class="form-select">
+                        {% for lvl in levels %}
+                        <option value="{{ lvl }}" {% if lvl == "INFO" %}selected{% endif %}>{{ lvl }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-4">
+                    <label class="form-label small">Log Retention</label>
+                    <input type="number" name="db_prune_days" class="form-control" value="0" min="0">
+                    <div class="form-text">Delete log entries older than this many days. 0 keeps everything.</div>
+                </div>
+                <div class="col-12 col-md-4">
+                    <label class="form-label small">Dry Run</label>
+                    <select name="dry_run" class="form-select">
+                        <option value="true" selected>Enabled (no IMAP actions taken)</option>
+                        <option value="false">Disabled</option>
+                    </select>
+                    <div class="form-text">Enable dry run until you are satisfied with your rules.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h2 class="card-subtitle text-secondary text-uppercase small fw-semibold mb-3">Security</h2>
+            <div class="row g-3">
+                <div class="col-12 col-md-6">
+                    <label class="form-label small">Web Password</label>
+                    <input type="password" name="web_password" class="form-control" autocomplete="new-password">
+                    <div class="form-text">Leave blank to disable password protection. Recommended if you are behind a reverse proxy with its own auth.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button type="submit" id="save-btn" class="btn btn-primary" disabled>Save and Complete Setup</button>
+</form>
+
+<script>
+(function () {
+    var testBtn = document.getElementById("test-btn");
+    var saveBtn = document.getElementById("save-btn");
+    var statusEl = document.getElementById("test-status");
+    var folderSel = document.getElementById("imap_folder");
+    var trashSel = document.getElementById("imap_trash_folder");
+    var spamSel = document.getElementById("imap_spam_folder");
+
+    function populateSelect(sel, folders, addAuto, selectedVal) {
+        sel.innerHTML = "";
+        if (addAuto) {
+            var opt = document.createElement("option");
+            opt.value = "";
+            opt.textContent = "Auto-detect";
+            if (!selectedVal) opt.selected = true;
+            sel.appendChild(opt);
+        }
+        folders.forEach(function (f) {
+            var opt = document.createElement("option");
+            opt.value = f;
+            opt.textContent = f;
+            if (f === selectedVal) opt.selected = true;
+            sel.appendChild(opt);
+        });
+        sel.disabled = false;
+    }
+
+    testBtn.addEventListener("click", function () {
+        statusEl.textContent = "Testing...";
+        statusEl.className = "small ms-2 text-secondary";
+        testBtn.disabled = true;
+
+        fetch("/api/test-imap", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                host: document.getElementById("imap_host").value,
+                port: document.getElementById("imap_port").value,
+                username: document.getElementById("imap_username").value,
+                password: document.getElementById("imap_password").value,
+                tls_mode: document.getElementById("tls_mode").value
+            })
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            testBtn.disabled = false;
+            if (data.success) {
+                populateSelect(folderSel, data.folders, false, "");
+                populateSelect(trashSel, data.folders, true, data.trash_folder || "");
+                populateSelect(spamSel, data.folders, true, data.spam_folder || "");
+                saveBtn.disabled = false;
+                statusEl.textContent = "Connected. Select your watch folder below.";
+                statusEl.className = "small ms-2 text-success";
+            } else {
+                statusEl.textContent = data.error || "Connection failed.";
+                statusEl.className = "small ms-2 text-danger";
+            }
+        })
+        .catch(function (e) {
+            testBtn.disabled = false;
+            statusEl.textContent = "Request failed: " + e;
+            statusEl.className = "small ms-2 text-danger";
+        });
+    });
+}());
+</script>
+{% endif %}
+{% endblock %}

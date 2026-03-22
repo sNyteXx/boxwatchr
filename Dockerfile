@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     redis-server \
     supervisor \
+    tzdata \
     unbound \
     && mkdir -p /etc/apt/keyrings \
     && wget -O- https://rspamd.com/apt-stable/gpg.key | gpg --dearmor | tee /etc/apt/keyrings/rspamd.gpg > /dev/null \
@@ -28,8 +29,8 @@ COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY docker/unbound.conf /etc/unbound/unbound.conf
 
 # Copy the startup script and make it executable.
-COPY docker/start.sh /start.sh
-RUN chmod +x /start.sh
+COPY docker/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
 # Set the working directory for the application.
 WORKDIR /app
@@ -54,4 +55,4 @@ EXPOSE 11334
 EXPOSE 8080
 
 # Run the startup script which configures rspamd and launches supervisord.
-CMD ["/start.sh"]
+CMD ["/docker-entrypoint.sh"]

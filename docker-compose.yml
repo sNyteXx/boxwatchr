@@ -7,7 +7,7 @@ services:
       - "${WEB_PORT:-8143}:80"
       - "11334:11334"
     volumes:
-      - ./config:/app/config:ro
+      - ./config:/app/config
       - ./data:/app/data
       - ./boxwatchr:/app/boxwatchr:ro
       - ./main.py:/app/main.py:ro

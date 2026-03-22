@@ -21,43 +21,51 @@ _STARTUP_CHECK_INTERVAL = 5
 _STARTUP_PER_SERVICE_TIMEOUT = 30
 _DIVIDER = "=" * 35
 
-
 def _tcp_check(host, port):
+    logger.debug("TCP check: connecting to %s:%s", host, port)
     try:
         s = socket.create_connection((host, port), timeout=2)
         s.close()
+        logger.debug("TCP check: %s:%s is reachable", host, port)
         return True, ""
     except OSError as e:
+        logger.debug("TCP check: %s:%s unreachable: %s", host, port, e)
         return False, str(e)
-
 
 def _check_rspamd():
     try:
         url = "http://%s:%s/ping" % (config.RSPAMD_HOST, config.RSPAMD_PORT)
+        logger.debug("rspamd health check: GET %s", url)
         response = requests.get(url, timeout=2)
         if response.text.strip() == "pong":
+            logger.debug("rspamd health check: OK")
             return True, ""
+        logger.debug("rspamd health check: unexpected response: %s", response.text.strip())
         return False, "unexpected response: %s" % response.text.strip()
     except requests.exceptions.RequestException as e:
+        logger.debug("rspamd health check: failed: %s", e)
         return False, str(e)
-
 
 def _check_redis():
     return _tcp_check("127.0.0.1", 6379)
 
-
 def _check_unbound():
     return _tcp_check("127.0.0.1", 5335)
-
 
 def _check_web():
     return _tcp_check("127.0.0.1", 80)
 
-
 def _check_imap():
+    if not config.SETUP_COMPLETE or not config.IMAP_HOST:
+        return True, "", False
+    logger.debug("IMAP health check: connecting to %s:%s", config.IMAP_HOST, config.IMAP_PORT)
     try:
-        client = IMAPClient(config.IMAP_HOST, port=config.IMAP_PORT, ssl=True)
+        _use_ssl = config.IMAP_TLS_MODE != "none" and config.IMAP_TLS_MODE != "starttls"
+        client = IMAPClient(config.IMAP_HOST, port=config.IMAP_PORT, ssl=_use_ssl)
+        if config.IMAP_TLS_MODE == "starttls":
+            client.starttls()
     except Exception as e:
+        logger.debug("IMAP health check: connection failed: %s", e)
         return False, str(e), False
 
     try:
@@ -67,11 +75,13 @@ def _check_imap():
             client.logout()
         except Exception:
             pass
+        logger.debug("IMAP health check: authentication failed: %s", e)
         return False, "authentication failed: %s" % e, True
 
     try:
         client.select_folder(config.IMAP_FOLDER)
         client.logout()
+        logger.debug("IMAP health check: OK")
         return True, "", False
     except Exception:
         reason = "folder %r does not exist on the server" % config.IMAP_FOLDER
@@ -85,8 +95,8 @@ def _check_imap():
             client.logout()
         except Exception:
             pass
+        logger.debug("IMAP health check: folder check failed for %r", config.IMAP_FOLDER)
         return False, reason, True
-
 
 def initialize_database():
     print(_DIVIDER, flush=True)
@@ -106,17 +116,21 @@ def initialize_database():
     logger.info("Database ready.")
     print(flush=True)
 
-
 def fatal_shutdown():
     flush_db()
     os.kill(1, signal.SIGTERM)
     sys.exit(2)
 
-
 def load_rules_startup(path):
     print(_DIVIDER, flush=True)
     print("Loading rules...", flush=True)
     print(_DIVIDER, flush=True)
+
+    if not os.path.exists(path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write("rules: []\n")
+        logger.info("Created empty rules file at %s", path)
 
     try:
         loaded_rules = _load_rules(path)
@@ -128,13 +142,11 @@ def load_rules_startup(path):
     print(flush=True)
     return loaded_rules
 
-
 _STARTUP_SERVICES = [
     ("Unbound", _check_unbound),
     ("Redis", _check_redis),
     ("rspamd", _check_rspamd),
 ]
-
 
 def start_services_sequentially():
     for name, check_fn in _STARTUP_SERVICES:
@@ -179,7 +191,6 @@ def start_services_sequentially():
         logger.info("%s service is up and ready.", name)
         print(flush=True)
 
-
 def start_imap(loaded_rules):
     print(_DIVIDER, flush=True)
     print("Starting: IMAP service...", flush=True)
@@ -190,11 +201,15 @@ def start_imap(loaded_rules):
     last_reason = ""
 
     while time.monotonic() < deadline:
+        logger.debug("Attempting IMAP connection to %s:%s", config.IMAP_HOST, config.IMAP_PORT)
         try:
-            client = IMAPClient(config.IMAP_HOST, port=config.IMAP_PORT, ssl=True)
+            _use_ssl = config.IMAP_TLS_MODE != "none" and config.IMAP_TLS_MODE != "starttls"
+            client = IMAPClient(config.IMAP_HOST, port=config.IMAP_PORT, ssl=_use_ssl)
+            if config.IMAP_TLS_MODE == "starttls":
+                client.starttls()
         except Exception as e:
             last_reason = str(e)
-            logger.debug("Waiting for IMAP to be ready...")
+            logger.debug("IMAP connection attempt failed: %s", e)
             time.sleep(_STARTUP_CHECK_INTERVAL)
             continue
 
@@ -219,29 +234,33 @@ def start_imap(loaded_rules):
 
     try:
         if not config.IMAP_TRASH_FOLDER or not config.IMAP_SPAM_FOLDER:
-            detected_trash, detected_junk = _imap.detect_special_folders(client)
+            logger.debug(
+                "Auto-detecting special IMAP folders (trash=%r, spam=%r configured so far)",
+                config.IMAP_TRASH_FOLDER, config.IMAP_SPAM_FOLDER
+            )
+            detected_trash, detected_spam = _imap.detect_special_folders(client)
 
             if not config.IMAP_TRASH_FOLDER:
                 if detected_trash:
                     config.IMAP_TRASH_FOLDER = detected_trash
                     logger.info("Trash folder auto-detected: %s", config.IMAP_TRASH_FOLDER)
                 else:
-                    logger.error(
-                        "Fatal: Trash folder not configured and could not be detected. "
-                        "Set IMAP_TRASH_FOLDER in .env\n\nShutting down."
+                    logger.warning(
+                        "Trash folder not configured and could not be auto-detected. "
+                        "Actions that require the trash folder will be skipped. "
+                        "Set it manually in the Config page."
                     )
-                    fatal_shutdown()
 
             if not config.IMAP_SPAM_FOLDER:
-                if detected_junk:
-                    config.IMAP_SPAM_FOLDER = detected_junk
+                if detected_spam:
+                    config.IMAP_SPAM_FOLDER = detected_spam
                     logger.info("Spam folder auto-detected: %s", config.IMAP_SPAM_FOLDER)
                 else:
-                    logger.error(
-                        "Fatal: Spam folder not configured and could not be detected. "
-                        "Set IMAP_SPAM_FOLDER in .env\n\nShutting down."
+                    logger.warning(
+                        "Spam folder not configured and could not be auto-detected. "
+                        "Actions that require the spam folder will be skipped. "
+                        "Set it manually in the Config page."
                     )
-                    fatal_shutdown()
 
         try:
             folder_names = _imap.list_folder_names(client)
@@ -251,6 +270,7 @@ def start_imap(loaded_rules):
 
         folder_set = set(folder_names)
         folder_list = "\n".join("- %s" % f for f in folder_names)
+        logger.debug("Found %s IMAP folder(s): %s", len(folder_names), ", ".join(sorted(folder_names)))
 
         if config.IMAP_FOLDER not in folder_set:
             logger.error(
@@ -259,12 +279,38 @@ def start_imap(loaded_rules):
             )
             fatal_shutdown()
 
+        logger.debug("Watched folder %r verified on server", config.IMAP_FOLDER)
+
+        if config.IMAP_TRASH_FOLDER and config.IMAP_TRASH_FOLDER not in folder_set:
+            logger.error(
+                "Fatal: Trash folder %r does not exist on the server. We found these folders:\n%s\n\nShutting down.",
+                config.IMAP_TRASH_FOLDER, folder_list
+            )
+            fatal_shutdown()
+
+        if config.IMAP_TRASH_FOLDER:
+            logger.debug("Trash folder %r verified on server", config.IMAP_TRASH_FOLDER)
+
+        if config.IMAP_SPAM_FOLDER and config.IMAP_SPAM_FOLDER not in folder_set:
+            logger.error(
+                "Fatal: Spam folder %r does not exist on the server. We found these folders:\n%s\n\nShutting down.",
+                config.IMAP_SPAM_FOLDER, folder_list
+            )
+            fatal_shutdown()
+
+        if config.IMAP_SPAM_FOLDER:
+            logger.debug("Spam folder %r verified on server", config.IMAP_SPAM_FOLDER)
+
         destinations = {
             action["destination"]
             for rule in loaded_rules
             for action in rule["actions"]
             if action["type"] == "move"
         }
+        logger.debug(
+            "Verifying %s rule move destination(s): %s",
+            len(destinations), ", ".join(sorted(destinations)) if destinations else "none"
+        )
         missing = [d for d in sorted(destinations) if d not in folder_set]
         if missing:
             logger.error(
@@ -284,8 +330,8 @@ def start_imap(loaded_rules):
     logger.info("IMAP service is up and ready.")
     print(flush=True)
 
-
 def service_check():
+    logger.debug("Running service health check")
     checks = {
         "rspamd": _check_rspamd,
         "redis": _check_redis,
@@ -300,7 +346,6 @@ def service_check():
         logger.debug("All services healthy")
     return failed
 
-
 def wait_for_services():
     logger.info("Waiting for all services to recover...")
     while True:
@@ -310,11 +355,11 @@ def wait_for_services():
             return
         time.sleep(_RETRY_INTERVAL)
 
-
 def _monitor_loop():
     consecutive_failures = 0
     while True:
         time.sleep(_MONITOR_INTERVAL)
+        logger.debug("Health monitor: running periodic service check")
         failed = service_check()
         if not failed:
             if consecutive_failures > 0:
@@ -322,8 +367,8 @@ def _monitor_loop():
             consecutive_failures = 0
         else:
             consecutive_failures += 1
-            logger.error(
-                "Service check failed (%s/%s consecutive failures)",
+            logger.warning(
+                "Services not yet available, retrying (%s/%s)",
                 consecutive_failures, _MAX_FAILURES
             )
             if consecutive_failures >= _MAX_FAILURES:
@@ -332,7 +377,6 @@ def _monitor_loop():
                     ", ".join(failed)
                 )
                 fatal_shutdown()
-
 
 def start_monitor():
     t = threading.Thread(target=_monitor_loop, daemon=True, name="health-monitor")

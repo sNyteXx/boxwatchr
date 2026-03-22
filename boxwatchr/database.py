@@ -5,7 +5,7 @@ import time
 import json
 import threading
 import collections
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from boxwatchr import config
 from boxwatchr.logger import get_logger
 
@@ -28,7 +28,6 @@ _processing_lock = threading.Lock()
 _flush_failures = 0
 _MAX_FLUSH_FAILURES = 20
 
-
 def set_processing(active):
     global _processing_active
     with _processing_lock:
@@ -38,6 +37,7 @@ def get_connection():
     conn = sqlite3.connect(DB_PATH, timeout=5)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
     return conn
 
 def _get_version(conn):
@@ -46,8 +46,8 @@ def _get_version(conn):
 def _set_version(conn, version):
     conn.execute(f"PRAGMA user_version = {version}")
 
-def _migrate_v1(conn):
-    logger.info("Creating database schema")
+def _create_schema(conn):
+    logger.info("Creating database schema (v1)")
 
     conn.execute("""
         CREATE TABLE emails (
@@ -62,11 +62,13 @@ def _migrate_v1(conn):
             spam_score REAL,
             rule_matched TEXT,
             actions TEXT NOT NULL DEFAULT '[]',
+            history TEXT NOT NULL DEFAULT '[]',
             raw_headers TEXT,
             attachments TEXT,
             processed INTEGER NOT NULL DEFAULT 0,
             processed_at TEXT NOT NULL,
             processed_notes TEXT,
+            user_action TEXT,
             UNIQUE(uid, folder)
         )
     """)
@@ -85,20 +87,26 @@ def _migrate_v1(conn):
     """)
     logger.debug("Logs table created")
 
-    logger.info("Database schema created")
+    conn.execute("""
+        CREATE TABLE config (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    """)
+    logger.debug("Config table created")
 
-def _migrate_v2(conn):
-    logger.info("Adding message_id and user_action columns to emails table")
+    logger.info("Database schema v1 created")
+
+def _migrate_v1_to_v2(conn):
+    logger.info("Migrating database from v1 to v2 (adding message_id and rspamd_learned columns)")
     conn.execute("ALTER TABLE emails ADD COLUMN message_id TEXT")
-    conn.execute("ALTER TABLE emails ADD COLUMN user_action TEXT")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_emails_message_id ON emails(message_id)")
-    logger.info("Migration v2 complete")
-
+    conn.execute("ALTER TABLE emails ADD COLUMN rspamd_learned TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_emails_message_id ON emails (message_id)")
+    logger.info("Migration v1 to v2 complete")
 
 _MIGRATIONS = [
-    None,
-    _migrate_v1,
-    _migrate_v2,
+    _create_schema,       # version 0 → 1
+    _migrate_v1_to_v2,    # version 1 → 2
 ]
 
 def initialize():
@@ -106,10 +114,14 @@ def initialize():
 
     try:
         conn = get_connection()
+    except sqlite3.Error as e:
+        logger.error("Failed to initialize database: %s", e)
+        raise
+
+    try:
         current_version = _get_version(conn)
 
         if current_version == CURRENT_VERSION:
-            conn.close()
             return
 
         if current_version > CURRENT_VERSION:
@@ -118,22 +130,65 @@ def initialize():
                 "Please update boxwatchr.",
                 current_version, CURRENT_VERSION
             )
-            conn.close()
             raise RuntimeError("Database version is newer than the application supports")
 
-        for version in range(current_version + 1, CURRENT_VERSION + 1):
-            logger.info("Migrating database from version %s to version %s", version - 1, version)
-            migration_fn = _MIGRATIONS[version]
-            migration_fn(conn)
-            _set_version(conn, version)
+        for i in range(current_version, CURRENT_VERSION):
+            _MIGRATIONS[i](conn)
+            _set_version(conn, i + 1)
             conn.commit()
-            logger.info("Database is now at version %s", version)
+            logger.info("Database migrated to version %s", i + 1)
 
-        conn.close()
         logger.info("Database initialization complete. Version: %s", CURRENT_VERSION)
 
     except sqlite3.Error as e:
         logger.error("Failed to initialize database: %s", e)
+        raise
+    finally:
+        conn.close()
+
+def get_config(key, default=None):
+    try:
+        conn = get_connection()
+        try:
+            row = conn.execute("SELECT value FROM config WHERE key = ?", (key,)).fetchone()
+            return row["value"] if row else default
+        finally:
+            conn.close()
+    except sqlite3.Error as e:
+        logger.error("Failed to read config key %r: %s", key, e)
+        return default
+
+def set_config(key, value):
+    try:
+        conn = get_connection()
+        try:
+            conn.execute(
+                "INSERT INTO config (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, str(value))
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except sqlite3.Error as e:
+        logger.error("Failed to write config key %r: %s", key, e)
+        raise
+
+def bulk_set_config(items_dict):
+    try:
+        conn = get_connection()
+        try:
+            for key, value in items_dict.items():
+                conn.execute(
+                    "INSERT INTO config (key, value) VALUES (?, ?) "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    (key, str(value))
+                )
+            conn.commit()
+        finally:
+            conn.close()
+    except sqlite3.Error as e:
+        logger.error("Failed to bulk-write config: %s", e)
         raise
 
 def start_flusher():
@@ -144,6 +199,7 @@ def start_flusher():
         _flusher_started = True
     t = threading.Thread(target=_flush_loop, daemon=True, name="db-flusher")
     t.start()
+    logger.debug("Database flusher thread started (interval=0.25s)")
 
 def _flush_loop():
     global _flush_failures
@@ -172,6 +228,7 @@ def _maybe_prune(conn):
         logger.info("Pruned %s log entries older than %s days", result.rowcount, config.DB_PRUNE_DAYS)
 
 def _flush():
+    global _flush_failures
     with _processing_lock:
         if _processing_active:
             return
@@ -185,6 +242,12 @@ def _flush():
         _email_queue.clear()
         _log_queue.clear()
         _email_update_queue.clear()
+
+    if emails_batch or updates_batch:
+        logger.debug(
+            "Flushing DB queues: %s email(s), %s update(s), %s log(s)",
+            len(emails_batch), len(updates_batch), len(logs_batch)
+        )
 
     try:
         conn = get_connection()
@@ -204,9 +267,9 @@ def _flush():
             conn.execute("""
                 INSERT INTO emails (
                     id, uid, folder, sender, recipients, subject, date_received, message_size,
-                    spam_score, rule_matched, actions, raw_headers, attachments,
-                    processed, processed_at, processed_notes, message_id, user_action
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    spam_score, rule_matched, actions, history, raw_headers, attachments,
+                    processed, processed_at, processed_notes, user_action, message_id, rspamd_learned
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(uid, folder) DO UPDATE SET
                     sender = excluded.sender,
                     recipients = excluded.recipients,
@@ -217,25 +280,74 @@ def _flush():
             """, (
                 item["id"], item["uid"], item["folder"], item["sender"], item["recipients"],
                 item["subject"], item["date_received"], item["message_size"],
-                item["spam_score"], item["rule_matched"], item["actions"],
+                item["spam_score"], item["rule_matched"], item["actions"], item["history"],
                 item["raw_headers"], item["attachments"],
                 item["processed"], item["processed_at"], item["processed_notes"],
-                item["message_id"], item["user_action"]
+                item["user_action"], item["message_id"], item["rspamd_learned"]
             ))
 
         for item in updates_batch:
-            conn.execute("""
-                UPDATE emails
-                SET rule_matched = ?,
-                    actions = ?,
-                    processed = ?,
-                    processed_at = ?,
-                    processed_notes = ?
-                WHERE id = ?
-            """, (
-                item["rule_matched"], item["actions"],
-                item["processed"], item["processed_at"], item["processed_notes"], item["id"]
-            ))
+            if item["rspamd_learned"] is not None:
+                if item["history"] is not None:
+                    conn.execute("""
+                        UPDATE emails
+                        SET rule_matched = ?,
+                            actions = ?,
+                            processed = ?,
+                            processed_at = ?,
+                            processed_notes = ?,
+                            history = ?,
+                            rspamd_learned = ?
+                        WHERE id = ?
+                    """, (
+                        item["rule_matched"], item["actions"],
+                        item["processed"], item["processed_at"], item["processed_notes"],
+                        json.dumps(item["history"]), item["rspamd_learned"], item["id"]
+                    ))
+                else:
+                    conn.execute("""
+                        UPDATE emails
+                        SET rule_matched = ?,
+                            actions = ?,
+                            processed = ?,
+                            processed_at = ?,
+                            processed_notes = ?,
+                            rspamd_learned = ?
+                        WHERE id = ?
+                    """, (
+                        item["rule_matched"], item["actions"],
+                        item["processed"], item["processed_at"], item["processed_notes"],
+                        item["rspamd_learned"], item["id"]
+                    ))
+            else:
+                if item["history"] is not None:
+                    conn.execute("""
+                        UPDATE emails
+                        SET rule_matched = ?,
+                            actions = ?,
+                            processed = ?,
+                            processed_at = ?,
+                            processed_notes = ?,
+                            history = ?
+                        WHERE id = ?
+                    """, (
+                        item["rule_matched"], item["actions"],
+                        item["processed"], item["processed_at"], item["processed_notes"],
+                        json.dumps(item["history"]), item["id"]
+                    ))
+                else:
+                    conn.execute("""
+                        UPDATE emails
+                        SET rule_matched = ?,
+                            actions = ?,
+                            processed = ?,
+                            processed_at = ?,
+                            processed_notes = ?
+                        WHERE id = ?
+                    """, (
+                        item["rule_matched"], item["actions"],
+                        item["processed"], item["processed_at"], item["processed_notes"], item["id"]
+                    ))
 
         for item in logs_batch:
             conn.execute("""
@@ -250,7 +362,6 @@ def _flush():
         conn.commit()
 
     except sqlite3.Error as e:
-        global _flush_failures
         _flush_failures += 1
         logger.error(
             "Failed to flush queued items to database: %s (%s/%s consecutive failures)",
@@ -267,6 +378,11 @@ def _flush():
 
     else:
         _flush_failures = 0
+        if emails_batch or updates_batch:
+            logger.debug(
+                "Flush complete: wrote %s email(s), %s update(s), %s log(s)",
+                len(emails_batch), len(updates_batch), len(logs_batch)
+            )
 
     finally:
         conn.close()
@@ -291,62 +407,101 @@ def clear_email_id_from_logs(email_id):
             if entry.get("email_id") == email_id:
                 entry["email_id"] = None
 
+def get_email_by_id(email_id):
+    if not email_id:
+        return None
+    try:
+        conn = get_connection()
+        try:
+            row = conn.execute(
+                "SELECT * FROM emails WHERE id = ?",
+                (email_id,)
+            ).fetchone()
+            return row
+        finally:
+            conn.close()
+    except sqlite3.Error as e:
+        logger.error("Failed to query email by id: %s", e)
+        return None
+
 def get_email_by_message_id(message_id):
     if not message_id:
         return None
     try:
         conn = get_connection()
-        row = conn.execute(
-            "SELECT * FROM emails WHERE message_id = ? ORDER BY user_action IS NULL ASC, processed_at DESC LIMIT 1",
-            (message_id,)
-        ).fetchone()
-        conn.close()
-        return row
+        try:
+            row = conn.execute(
+                "SELECT * FROM emails WHERE message_id = ?",
+                (message_id,)
+            ).fetchone()
+            return row
+        finally:
+            conn.close()
     except sqlite3.Error as e:
         logger.error("Failed to query email by message_id: %s", e)
         return None
 
-
 def update_email_uid(email_id, uid):
     try:
         conn = get_connection()
-        conn.execute("UPDATE emails SET uid = ? WHERE id = ?", (uid, email_id))
-        conn.commit()
-        conn.close()
-        logger.debug("Updated UID to %s for email %s", uid, email_id)
+        try:
+            conn.execute("UPDATE emails SET uid = ? WHERE id = ?", (uid, email_id))
+            conn.commit()
+            logger.debug("Updated UID to %s for email %s", uid, email_id)
+        finally:
+            conn.close()
     except sqlite3.Error as e:
         logger.error("Failed to update UID for email %s: %s", email_id, e)
         raise
 
-def relink_logs_to_email(old_email_id, new_email_id):
-    with _queue_lock:
-        for entry in _log_queue:
-            if entry.get("email_id") == old_email_id:
-                entry["email_id"] = new_email_id
-
-def set_user_action(email_id, user_action, message_id=None):
+def set_rspamd_learned(email_id, learned):
     try:
         conn = get_connection()
-        if message_id:
-            conn.execute(
-                "UPDATE emails SET user_action = ?, message_id = ? WHERE id = ?",
-                (user_action, message_id, email_id)
-            )
-        else:
-            conn.execute("UPDATE emails SET user_action = ? WHERE id = ?", (user_action, email_id))
-        conn.commit()
-        conn.close()
-        logger.info("Set user_action=%s for email %s", user_action, email_id)
+        try:
+            conn.execute("UPDATE emails SET rspamd_learned = ? WHERE id = ?", (learned, email_id))
+            conn.commit()
+            logger.debug("Set rspamd_learned=%s for email %s", learned, email_id)
+        finally:
+            conn.close()
+    except sqlite3.Error as e:
+        logger.error("Failed to set rspamd_learned for email %s: %s", email_id, e)
+        raise
+
+def set_user_action(email_id, user_action, rspamd_learned=None):
+    try:
+        conn = get_connection()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT history FROM emails WHERE id = ?", (email_id,)).fetchone()
+            current_history = json.loads(row["history"] or "[]") if row else []
+            entry = {
+                "at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                "by": "user",
+                "action": user_action,
+            }
+            new_history = json.dumps(current_history + [entry])
+            if rspamd_learned is not None:
+                conn.execute(
+                    "UPDATE emails SET user_action = ?, history = ?, rspamd_learned = ? WHERE id = ?",
+                    (user_action, new_history, rspamd_learned, email_id)
+                )
+            else:
+                conn.execute(
+                    "UPDATE emails SET user_action = ?, history = ? WHERE id = ?",
+                    (user_action, new_history, email_id)
+                )
+            conn.commit()
+            logger.debug("Set user_action=%s for email %s", user_action, email_id)
+        finally:
+            conn.close()
     except sqlite3.Error as e:
         logger.error("Failed to set user_action for email %s: %s", email_id, e)
         raise
 
-
 def enqueue_email(uid, folder, sender, recipients, subject, date_received, message_size,
                   spam_score, rule_matched, actions, raw_headers, attachments, processed,
-                  processed_at, processed_notes, email_id=None, message_id="", user_action=None):
-    if email_id is None:
-        email_id = str(uuid.uuid4())
+                  processed_at, processed_notes, email_id=None, user_action=None, history=None,
+                  message_id=None, rspamd_learned=None):
     with _queue_lock:
         _email_queue.append({
             "id": email_id,
@@ -360,17 +515,22 @@ def enqueue_email(uid, folder, sender, recipients, subject, date_received, messa
             "spam_score": spam_score,
             "rule_matched": rule_matched,
             "actions": json.dumps(actions),
+            "history": json.dumps(history or []),
             "raw_headers": raw_headers,
             "attachments": json.dumps(attachments) if attachments is not None else None,
             "processed": processed,
             "processed_at": processed_at,
             "processed_notes": processed_notes,
-            "message_id": message_id,
             "user_action": user_action,
+            "message_id": message_id,
+            "rspamd_learned": rspamd_learned,
         })
+        queue_size = len(_email_queue)
+    logger.debug("Enqueued email uid=%s id=%s (email queue size: %s)", uid, email_id, queue_size)
     return email_id
 
-def enqueue_email_update(email_id, rule_matched, actions, processed, processed_at, processed_notes):
+def enqueue_email_update(email_id, rule_matched, actions, processed, processed_at, processed_notes,
+                         history=None, rspamd_learned=None):
     with _queue_lock:
         _email_update_queue.append({
             "id": email_id,
@@ -379,7 +539,11 @@ def enqueue_email_update(email_id, rule_matched, actions, processed, processed_a
             "processed": processed,
             "processed_at": processed_at,
             "processed_notes": processed_notes,
+            "history": history,
+            "rspamd_learned": rspamd_learned,
         })
+        queue_size = len(_email_update_queue)
+    logger.debug("Enqueued email update id=%s processed=%s (update queue size: %s)", email_id, processed, queue_size)
 
 def verify():
     if not os.path.exists(DB_PATH):
@@ -387,22 +551,21 @@ def verify():
 
     try:
         conn = get_connection()
-        version = _get_version(conn)
+        try:
+            version = _get_version(conn)
 
-        if version != CURRENT_VERSION:
+            if version != CURRENT_VERSION:
+                raise RuntimeError(f"Database version mismatch: expected {CURRENT_VERSION}, got {version}")
+
+            expected_tables = {"emails", "logs", "config"}
+            rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+            found_tables = {row["name"] for row in rows}
+            missing = expected_tables - found_tables
+
+            if missing:
+                raise RuntimeError(f"Database missing expected tables: {missing}")
+        finally:
             conn.close()
-            raise RuntimeError(f"Database version mismatch: expected {CURRENT_VERSION}, got {version}")
-
-        expected_tables = {"emails", "logs"}
-        rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
-        found_tables = {row["name"] for row in rows}
-        missing = expected_tables - found_tables
-
-        if missing:
-            conn.close()
-            raise RuntimeError(f"Database missing expected tables: {missing}")
-
-        conn.close()
 
     except sqlite3.Error as e:
         logger.error("Database verification failed: %s", e)
@@ -413,29 +576,29 @@ def get_known_uids(folder):
 
     try:
         conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT uid FROM emails WHERE folder = ?", (folder,))
-        rows = cursor.fetchall()
-        conn.close()
-        known = {int(row["uid"]) for row in rows}
-        logger.debug("Found %s known UID(s) in %s", len(known), folder)
-        return known
+        try:
+            rows = conn.execute("SELECT uid FROM emails WHERE folder = ?", (folder,)).fetchall()
+            known = {int(row["uid"]) for row in rows}
+            logger.debug("Found %s known UID(s) in %s", len(known), folder)
+            return known
+        finally:
+            conn.close()
 
     except sqlite3.Error as e:
         logger.error("Failed to fetch known UIDs for folder %s: %s", folder, e)
         raise
 
 def get_unprocessed_emails():
-    logger.info("Fetching unprocessed email records")
+    logger.debug("Fetching unprocessed email records")
 
     try:
         conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM emails WHERE processed = 0")
-        rows = cursor.fetchall()
-        conn.close()
-        logger.info("Found %s unprocessed email record(s)", len(rows))
-        return rows
+        try:
+            rows = conn.execute("SELECT * FROM emails WHERE processed = 0").fetchall()
+            logger.debug("Found %s unprocessed email record(s)", len(rows))
+            return rows
+        finally:
+            conn.close()
 
     except sqlite3.Error as e:
         logger.error("Failed to fetch unprocessed email records: %s", e)

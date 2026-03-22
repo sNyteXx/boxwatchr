@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% block title %}boxwatchr | Email {{ email.id[:8] }}{% endblock %}
+
+{% block content %}
+<h1 class="h4 fw-semibold mb-4">Email Detail</h1>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="card-subtitle text-secondary text-uppercase small fw-semibold mb-3">Summary</h2>
+        <dl>
+            <dt>ID</dt>
+            <dd><code>{{ email.id }}</code></dd>
+
+            <dt>Sender</dt>
+            <dd>{{ email.sender or "—" }}</dd>
+
+            <dt>Recipients</dt>
+            <dd>{{ email.recipients or "—" }}</dd>
+
+            <dt>Subject</dt>
+            <dd>{{ email.subject or "—" }}</dd>
+
+            <dt>Date Received</dt>
+            <dd>{{ email.date_received or "—" }}</dd>
+
+            <dt>Folder</dt>
+            <dd>{{ email.folder }}</dd>
+
+            <dt>IMAP UID</dt>
+            <dd>{{ email.uid }}</dd>
+
+            <dt>Message Size</dt>
+            <dd>{% if email.message_size %}{{ "{:,}".format(email.message_size) }} bytes{% else %}—{% endif %}</dd>
+
+            <dt>Spam Score</dt>
+            <dd>
+                {% if email.spam_score is not none %}
+                <span class="{{ email.score_class }}">{{ "%.2f"|format(email.spam_score) }}</span>
+                {% else %}
+                —
+                {% endif %}
+            </dd>
+
+            <dt>Status</dt>
+            <dd>
+                {% if email.processed %}
+                <span class="badge badge-ok">Processed</span>
+                {% else %}
+                <span class="badge badge-pending">Pending</span>
+                {% endif %}
+            </dd>
+
+            <dt>Processed At</dt>
+            <dd>{{ email.processed_at | localtime or "—" }}</dd>
+
+            <dt>Notes</dt>
+            <dd>{{ email.processed_notes or "—" }}</dd>
+
+            {% if email.rule %}
+            <dt>Rule Matched</dt>
+            <dd>{{ email.rule.name }}</dd>
+            {% endif %}
+
+            {% if email.user_action %}
+            <dt>User Override</dt>
+            <dd>
+                {% if email.user_action == "ham" %}
+                <span class="badge badge-ham">Not Spam</span>
+                {% elif email.user_action == "spam" %}
+                <span class="badge badge-spam">Confirmed Spam</span>
+                {% endif %}
+            </dd>
+            {% endif %}
+        </dl>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="card-subtitle text-secondary text-uppercase small fw-semibold mb-3">Manual Review</h2>
+        <div class="d-flex gap-2 flex-wrap action-forms">
+            {% if email.spammed or email.user_action == "spam" %}
+            <form method="post" action="/emails/{{ email.id }}/not-spam">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-ham">Not Spam, Report as Ham</button>
+            </form>
+            {% else %}
+            <form method="post" action="/emails/{{ email.id }}/is-spam">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-spam">Not Ham, Report as Spam</button>
+            </form>
+            {% endif %}
+        </div>
+        {% if email.user_action %}
+        <p class="text-secondary small mt-2 mb-0">
+            Current override:
+            {% if email.user_action == "ham" %}reported as ham
+            {% elif email.user_action == "spam" %}reported as spam
+            {% endif %}
+        </p>
+        {% endif %}
+    </div>
+</div>
+
+{% if email.history %}
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="card-subtitle text-secondary text-uppercase small fw-semibold mb-3">History</h2>
+        <table class="table table-sm mb-0">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>By</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in email.history %}
+                <tr>
+                    <td class="text-nowrap small">{{ entry.at | localtime }}</td>
+                    <td>{{ "User" if entry.by == "user" else "boxwatchr" }}</td>
+                    <td>
+                        {% if entry.action == "spam" %}Moved to spam{% if entry.destination %} ({{ entry.destination }}){% endif %}
+                        {% elif entry.action == "move" %}Moved to {{ entry.destination or "?" }}
+                        {% elif entry.action == "delete" %}Moved to trash{% if entry.destination %} ({{ entry.destination }}){% endif %}
+                        {% elif entry.action == "mark_read" %}Marked as read
+                        {% elif entry.action == "mark_unread" %}Marked as unread
+                        {% elif entry.action == "flag" %}Flagged
+                        {% elif entry.action == "unflag" %}Removed flag
+                        {% elif entry.action == "ham" %}Reported as ham
+                        {% elif entry.action == "spam" %}Reported as spam
+                        {% else %}{{ entry.action }}{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{% if email.attachments %}
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="card-subtitle text-secondary text-uppercase small fw-semibold mb-3">Attachments</h2>
+        <table class="table table-sm mb-0">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Extension</th>
+                    <th>Content Type</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in email.attachments %}
+                <tr>
+                    <td>{{ a.name or "—" }}</td>
+                    <td>{{ a.extension or "—" }}</td>
+                    <td>{{ a.content_type or "—" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{% if email.raw_headers %}
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="card-subtitle text-secondary text-uppercase small fw-semibold mb-3">Raw Headers</h2>
+        <pre class="mb-0">{{ email.raw_headers }}</pre>
+    </div>
+</div>
+{% endif %}
+
+{% if logs %}
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="card-subtitle text-secondary text-uppercase small fw-semibold mb-3">Log Entries</h2>
+        <div class="table-responsive">
+            <table class="table table-sm log-table mb-0">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Level</th>
+                        <th>Logger</th>
+                        <th>Message</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    <tr class="log-{{ log.level }}">
+                        <td class="text-nowrap small">{{ log.logged_at | localtime }}</td>
+                        <td>{{ log.level }}</td>
+                        <td>{{ log.logger_name }}</td>
+                        <td>{{ log.message }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<p class="small mb-0">
+    <a href="/emails" class="text-secondary">&larr; Back to emails</a>
+</p>
+{% endblock %}

@@ -50,7 +50,7 @@ def check(raw_message, email_id=None):
                 )
 
         if score >= config.SPAM_THRESHOLD:
-            logger.info(
+            logger.debug(
                 "Message score %.2f exceeds threshold %.2f, action: %s",
                 score,
                 config.SPAM_THRESHOLD,
@@ -84,11 +84,34 @@ def check(raw_message, email_id=None):
         logger.error("Unexpected error during spam check: %s", e, extra={"email_id": email_id})
         return None
 
+def should_learn(learn_type):
+    return (
+        learn_type is not None
+        and config.SPAM_LEARNING != "off"
+        and (
+            (learn_type == "spam" and config.SPAM_LEARNING in ("spam", "both"))
+            or (learn_type == "ham" and config.SPAM_LEARNING in ("ham", "both"))
+        )
+    )
+
+def learn_sentence(learn_type, dry_run):
+    if dry_run:
+        if learn_type == "ham":
+            return "Would have submitted to rspamd as ham."
+        if learn_type == "spam":
+            return "Would have submitted to rspamd as spam."
+    else:
+        if learn_type == "ham":
+            return "Submitted to rspamd as ham."
+        if learn_type == "spam":
+            return "Submitted to rspamd as spam."
+    return ""
+
 def learn_spam(raw_message, email_id=None):
-    _learn(raw_message, "spam", email_id)
+    return _learn(raw_message, "spam", email_id)
 
 def learn_ham(raw_message, email_id=None):
-    _learn(raw_message, "ham", email_id)
+    return _learn(raw_message, "ham", email_id)
 
 def _learn(raw_message, learn_type, email_id=None):
     url = f"http://{config.RSPAMD_HOST}:{config.RSPAMD_CONTROLLER_PORT}/learn{learn_type}"
@@ -112,7 +135,7 @@ def _learn(raw_message, learn_type, email_id=None):
                 response.text,
                 extra={"email_id": email_id}
             )
-            return
+            return False
 
         logger.info(
             "rspamd %s learning response: %s",
@@ -120,12 +143,16 @@ def _learn(raw_message, learn_type, email_id=None):
             response.text.strip(),
             extra={"email_id": email_id}
         )
+        return True
 
     except requests.exceptions.Timeout:
         logger.error("rspamd learning request timed out", extra={"email_id": email_id})
+        return False
 
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to rspamd at %s", url, extra={"email_id": email_id})
+        return False
 
     except Exception as e:
         logger.error("Unexpected error during rspamd learning: %s", e, extra={"email_id": email_id})
+        return False

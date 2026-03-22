@@ -1,8 +1,11 @@
 import os
 import re
+import time
 import yaml
 import threading
 import tldextract
+
+_tldextract = tldextract.TLDExtract(cache_dir="/app/data/tldextract")
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from boxwatchr.logger import get_logger
@@ -12,7 +15,7 @@ logger = get_logger("boxwatchr.rules")
 _rules = []
 _rules_lock = threading.Lock()
 
-TERMINAL_ACTIONS = {"move", "delete", "junk"}
+TERMINAL_ACTIONS = {"move", "delete", "spam"}
 
 def load_rules(path):
     global _rules
@@ -35,7 +38,7 @@ def load_rules(path):
 
     validated = []
     for rule in data["rules"]:
-        result = _validate_rule(rule)
+        result = validate_rule(rule)
         if result:
             validated.append(result)
 
@@ -44,7 +47,7 @@ def load_rules(path):
 
     return validated
 
-def _validate_rule(rule):
+def validate_rule(rule):
     name = rule.get("name", "").strip()
     if not name:
         logger.warning("A rule is missing a name and will be skipped")
@@ -82,8 +85,8 @@ def _validate_rule(rule):
     }
 
     valid_operators = {"equals", "contains", "is_empty"}
-    valid_actions = {"move", "delete", "junk", "mark_read", "mark_unread"}
-    contradictory_pairs = [{"mark_read", "mark_unread"}]
+    valid_actions = {"move", "delete", "spam", "mark_read", "mark_unread", "flag", "unflag"}
+    contradictory_pairs = [{"mark_read", "mark_unread"}, {"flag", "unflag"}]
 
     validated_conditions = []
     for i, condition in enumerate(rule["conditions"]):
@@ -133,11 +136,15 @@ def _validate_rule(rule):
             logger.warning("Rule '%s' action %s has unknown type '%s' and will be skipped", name, i + 1, action_type)
             continue
 
-        if action_type == "move" and not action.get("destination", "").strip():
-            logger.warning("Rule '%s' action %s is a move but has no destination and will be skipped", name, i + 1)
+        if action_type == "move":
+            destination = action.get("destination", "").strip()
+            if not destination:
+                logger.warning("Rule '%s' action %s is a move but has no destination and will be skipped", name, i + 1)
+                continue
+            validated_actions.append({"type": "move", "destination": destination})
             continue
 
-        validated_actions.append(action)
+        validated_actions.append({"type": action_type})
 
     if not validated_actions:
         logger.warning("Rule '%s' has no valid actions after validation and will be skipped", name)
@@ -197,7 +204,7 @@ def _extract_fields(email):
                 "tld": ""
             }
         local, domain = address.split("@", 1)
-        extracted = tldextract.extract(domain)
+        extracted = _tldextract(domain)
         domain_root = extracted.domain
         tld = extracted.suffix
         domain_name = f"{extracted.subdomain}.{extracted.domain}" if extracted.subdomain else extracted.domain
@@ -257,12 +264,16 @@ def _match_condition(condition, fields, rule_name):
         }.get(field)
 
         if not fields["recipients"]:
-            return _apply_operator(operator, "", value, field, rule_name)
+            result = _apply_operator(operator, "", value, field, rule_name)
+            logger.debug("Rule '%s': condition field=%s operator=%s value=%r => %s (no recipients)", rule_name, field, operator, value, result)
+            return result
 
-        return any(
+        result = any(
             _apply_operator(operator, r.get(recipient_key, ""), value, field, rule_name)
             for r in fields["recipients"]
         )
+        logger.debug("Rule '%s': condition field=%s operator=%s value=%r => %s (checked %s recipient(s))", rule_name, field, operator, value, result, len(fields["recipients"]))
+        return result
 
     if field.startswith("attachment"):
         attachment_key = {
@@ -272,15 +283,21 @@ def _match_condition(condition, fields, rule_name):
         }.get(field)
 
         if not fields["attachments"]:
-            return _apply_operator(operator, "", value, field, rule_name)
+            result = _apply_operator(operator, "", value, field, rule_name)
+            logger.debug("Rule '%s': condition field=%s operator=%s value=%r => %s (no attachments)", rule_name, field, operator, value, result)
+            return result
 
-        return any(
+        result = any(
             _apply_operator(operator, a.get(attachment_key, ""), value, field, rule_name)
             for a in fields["attachments"]
         )
+        logger.debug("Rule '%s': condition field=%s operator=%s value=%r => %s (checked %s attachment(s))", rule_name, field, operator, value, result, len(fields["attachments"]))
+        return result
 
     field_value = fields.get(field, "")
-    return _apply_operator(operator, field_value, value, field, rule_name)
+    result = _apply_operator(operator, field_value, value, field, rule_name)
+    logger.debug("Rule '%s': condition field=%s operator=%s value=%r field_value=%r => %s", rule_name, field, operator, value, field_value, result)
+    return result
 
 def _normalize(value):
     return re.sub(r"[^a-z0-9]", "", value.lower())
@@ -322,14 +339,33 @@ def _apply_operator(operator, field_value, value, field_name, rule_name):
     if operator == "contains":
         return value in field_value
 
+    logger.warning("Unknown operator %r in rule '%s' field %s — condition will not match", operator, rule_name, field_name)
     return False
+
+def check_rule(rule, email_data):
+    fields = _extract_fields(email_data)
+    conditions = rule["conditions"]
+    results = [_match_condition(c, fields, rule["name"]) for c in conditions]
+    logger.debug(
+        "check_rule '%s' (match=%s): condition results=%s => %s",
+        rule["name"], rule["match"], results,
+        any(results) if rule["match"] == "any" else all(results)
+    )
+    if rule["match"] == "any":
+        return any(results)
+    return all(results)
 
 def evaluate(email):
     fields = _extract_fields(email)
-    logger.debug("Evaluating rules for email from %s", fields.get("sender", "unknown"))
+    logger.debug(
+        "Evaluating rules for email from %s (subject=%r)",
+        fields.get("sender", "unknown"), email.get("subject", "")
+    )
 
     with _rules_lock:
         rules = list(_rules)
+
+    logger.debug("Checking %s rule(s)", len(rules))
 
     for rule in rules:
         conditions = rule["conditions"]
@@ -338,12 +374,14 @@ def evaluate(email):
         results = [_match_condition(c, fields, rule["name"]) for c in conditions]
 
         if match_type == "all" and all(results):
-            logger.info("Email matched rule '%s'", rule["name"])
+            logger.info("Email matched rule '%s' (match=all, %s/%s conditions met)", rule["name"], sum(results), len(results))
             return rule
 
         if match_type == "any" and any(results):
-            logger.info("Email matched rule '%s'", rule["name"])
+            logger.info("Email matched rule '%s' (match=any, %s/%s conditions met)", rule["name"], sum(results), len(results))
             return rule
+
+        logger.debug("Rule '%s' did not match (match=%s, results=%s)", rule["name"], match_type, results)
 
     logger.debug("Email did not match any rules")
     return None
@@ -351,15 +389,21 @@ def evaluate(email):
 class _RulesFileHandler(FileSystemEventHandler):
     def __init__(self, path):
         self.path = path
+        self._last_reload = 0.0
 
     def on_modified(self, event):
-        if event.src_path.endswith(self.path):
-            logger.info("Rules file changed, reloading")
-            try:
-                loaded = load_rules(self.path)
-                logger.info("Reloaded %s valid rule(s)", len(loaded))
-            except Exception as e:
-                logger.error("Failed to reload rules: %s", e)
+        if os.path.abspath(event.src_path) != os.path.abspath(self.path):
+            return
+        now = time.time()
+        if now - self._last_reload < 1.0:
+            return
+        self._last_reload = now
+        logger.info("Rules file changed, reloading")
+        try:
+            loaded = load_rules(self.path)
+            logger.info("Reloaded %s valid rule(s)", len(loaded))
+        except Exception as e:
+            logger.error("Failed to reload rules: %s", e)
 
 def watch_rules(path):
     logger.info("Watching rules file for changes: %s", path)

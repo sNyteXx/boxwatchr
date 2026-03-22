@@ -16,7 +16,8 @@ class DatabaseHandler(logging.Handler):
 
 def get_logger(name):
     logger = logging.getLogger(name)
-    logger.setLevel(config.LOG_LEVEL)
+    logger.setLevel(logging.DEBUG)
+    logger.propagate = False
 
     if not logger.handlers:
         stream_handler = logging.StreamHandler(sys.stdout)

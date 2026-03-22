@@ -175,7 +175,7 @@
 #
 # Move the email to your spam folder as defined by IMAP_SPAM_FOLDER.
 #
-#   - type: junk
+#   - type: spam
 
 # =============================================================================
 # LEARNING
@@ -279,7 +279,7 @@ rules:
         operator: is_empty
         value: true
     actions:
-      - type: junk
+      - type: spam
 
   # raw_headers example. List-Unsubscribe is a header that legitimate
   # mailing lists include. Matching on it catches promotional emails
@@ -338,7 +338,7 @@ rules:
         operator: equals
         value: "bat"
     actions:
-      - type: junk
+      - type: spam
 
   # Move emails with PDF attachments to a Documents folder.
   - name: PDF attachments
