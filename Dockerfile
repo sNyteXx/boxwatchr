@@ -3,7 +3,9 @@ FROM debian:trixie-slim
 # Install system dependencies, the rspamd repository, rspamd itself,
 # Python, pip, and supervisord all in one layer to keep the image small.
 # We clean up the apt cache at the end to reduce image size.
-RUN apt-get update && apt-get install -y \
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     wget \
     gnupg \
@@ -40,7 +42,7 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Install Python dependencies.
-RUN pip install --break-system-packages --no-cache-dir -r requirements.txt
+RUN pip install --break-system-packages --no-cache-dir -r requirements.txt --root-user-action=ignore
 
 # Copy the rest of the application code.
 COPY boxwatchr/ ./boxwatchr/
