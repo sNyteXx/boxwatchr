@@ -51,7 +51,7 @@ def _check_password(password, stored):
     if not stored or not password:
         return False
     if ":" not in stored:
-        return hmac.compare_digest(password, stored)
+        return False
     try:
         salt_b64, hash_b64 = stored.split(":", 1)
         salt = base64.b64decode(salt_b64)
@@ -99,6 +99,9 @@ def _require_auth(f):
             return redirect(url_for("login"))
         return f(*args, **kwargs)
     return decorated
+
+def _is_spammed(actions, user_action):
+    return any(a.get("type") == "spam" for a in actions) and user_action != "ham"
 
 def _score_class(score):
     if score is None:

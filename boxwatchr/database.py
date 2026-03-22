@@ -240,7 +240,11 @@ def _flush():
     try:
         conn = get_connection()
     except sqlite3.Error as e:
-        logger.error("Failed to open database connection for flush: %s", e)
+        _flush_failures += 1
+        logger.error(
+            "Failed to open database connection for flush: %s (%s/%s consecutive failures)",
+            e, _flush_failures, _MAX_FLUSH_FAILURES
+        )
         with _queue_lock:
             for item in reversed(emails_batch):
                 _email_queue.appendleft(item)
@@ -275,67 +279,31 @@ def _flush():
             ))
 
         for item in updates_batch:
+            cols = [
+                "rule_matched = ?",
+                "actions = ?",
+                "processed = ?",
+                "processed_at = ?",
+                "processed_notes = ?",
+            ]
+            vals = [
+                item["rule_matched"],
+                item["actions"],
+                item["processed"],
+                item["processed_at"],
+                item["processed_notes"],
+            ]
+            if item["history"] is not None:
+                cols.append("history = ?")
+                vals.append(json.dumps(item["history"]))
             if item["rspamd_learned"] is not None:
-                if item["history"] is not None:
-                    conn.execute("""
-                        UPDATE emails
-                        SET rule_matched = ?,
-                            actions = ?,
-                            processed = ?,
-                            processed_at = ?,
-                            processed_notes = ?,
-                            history = ?,
-                            rspamd_learned = ?
-                        WHERE id = ?
-                    """, (
-                        item["rule_matched"], item["actions"],
-                        item["processed"], item["processed_at"], item["processed_notes"],
-                        json.dumps(item["history"]), item["rspamd_learned"], item["id"]
-                    ))
-                else:
-                    conn.execute("""
-                        UPDATE emails
-                        SET rule_matched = ?,
-                            actions = ?,
-                            processed = ?,
-                            processed_at = ?,
-                            processed_notes = ?,
-                            rspamd_learned = ?
-                        WHERE id = ?
-                    """, (
-                        item["rule_matched"], item["actions"],
-                        item["processed"], item["processed_at"], item["processed_notes"],
-                        item["rspamd_learned"], item["id"]
-                    ))
-            else:
-                if item["history"] is not None:
-                    conn.execute("""
-                        UPDATE emails
-                        SET rule_matched = ?,
-                            actions = ?,
-                            processed = ?,
-                            processed_at = ?,
-                            processed_notes = ?,
-                            history = ?
-                        WHERE id = ?
-                    """, (
-                        item["rule_matched"], item["actions"],
-                        item["processed"], item["processed_at"], item["processed_notes"],
-                        json.dumps(item["history"]), item["id"]
-                    ))
-                else:
-                    conn.execute("""
-                        UPDATE emails
-                        SET rule_matched = ?,
-                            actions = ?,
-                            processed = ?,
-                            processed_at = ?,
-                            processed_notes = ?
-                        WHERE id = ?
-                    """, (
-                        item["rule_matched"], item["actions"],
-                        item["processed"], item["processed_at"], item["processed_notes"], item["id"]
-                    ))
+                cols.append("rspamd_learned = ?")
+                vals.append(item["rspamd_learned"])
+            vals.append(item["id"])
+            conn.execute(
+                "UPDATE emails SET %s WHERE id = ?" % ", ".join(cols),
+                vals
+            )
 
         for item in logs_batch:
             conn.execute("""
@@ -395,23 +363,6 @@ def clear_email_id_from_logs(email_id):
             if entry.get("email_id") == email_id:
                 entry["email_id"] = None
 
-def get_email_by_id(email_id):
-    if not email_id:
-        return None
-    try:
-        conn = get_connection()
-        try:
-            row = conn.execute(
-                "SELECT * FROM emails WHERE id = ?",
-                (email_id,)
-            ).fetchone()
-            return row
-        finally:
-            conn.close()
-    except sqlite3.Error as e:
-        logger.error("Failed to query email by id: %s", e)
-        return None
-
 def get_email_by_message_id(message_id):
     if not message_id:
         return None
@@ -440,19 +391,6 @@ def update_email_uid(email_id, uid):
             conn.close()
     except sqlite3.Error as e:
         logger.error("Failed to update UID for email %s: %s", email_id, e)
-        raise
-
-def set_rspamd_learned(email_id, learned):
-    try:
-        conn = get_connection()
-        try:
-            conn.execute("UPDATE emails SET rspamd_learned = ? WHERE id = ?", (learned, email_id))
-            conn.commit()
-            logger.debug("Set rspamd_learned=%s for email %s", learned, email_id)
-        finally:
-            conn.close()
-    except sqlite3.Error as e:
-        logger.error("Failed to set rspamd_learned for email %s: %s", email_id, e)
         raise
 
 def set_user_action(email_id, user_action, rspamd_learned=None):

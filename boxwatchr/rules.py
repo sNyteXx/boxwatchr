@@ -8,6 +8,7 @@ import tldextract
 _tldextract = tldextract.TLDExtract(cache_dir="/app/data/tldextract")
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+from boxwatchr import config
 from boxwatchr.logger import get_logger
 
 logger = get_logger("boxwatchr.rules")
@@ -437,6 +438,30 @@ def evaluate(email, spam_score=None, email_id=None):
 
     logger.debug("Email did not match any rules", extra=extra)
     return None
+
+def resolve_actions(rule_actions):
+    actions = []
+    missing = []
+    non_terminal = [a for a in rule_actions if a["type"] not in TERMINAL_ACTIONS]
+    terminal = [a for a in rule_actions if a["type"] in TERMINAL_ACTIONS]
+    for action in non_terminal + terminal:
+        action_type = action["type"]
+        if action_type == "move":
+            actions.append({"type": "move", "destination": action["destination"]})
+        elif action_type == "delete":
+            if config.IMAP_TRASH_FOLDER:
+                actions.append({"type": "delete", "destination": config.IMAP_TRASH_FOLDER})
+            else:
+                missing.append("delete")
+        elif action_type == "spam":
+            if config.IMAP_SPAM_FOLDER:
+                actions.append({"type": "spam", "destination": config.IMAP_SPAM_FOLDER})
+            else:
+                missing.append("spam")
+        else:
+            actions.append({"type": action_type})
+    return actions, missing
+
 
 class _RulesFileHandler(FileSystemEventHandler):
     def __init__(self, path):

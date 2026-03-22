@@ -5,7 +5,7 @@ from flask import render_template, request, redirect, url_for, abort
 from boxwatchr import config, imap, spam
 from boxwatchr.database import get_connection, enqueue_email_update
 from boxwatchr.notes import action_sentence
-from boxwatchr.rules import validate_rule, check_rule, TERMINAL_ACTIONS
+from boxwatchr.rules import validate_rule, check_rule, TERMINAL_ACTIONS, resolve_actions
 from boxwatchr.web.app import app, _require_auth, _require_csrf, _check_csrf, logger
 from boxwatchr.web.rules import _FIELD_LABELS, _ACTION_LABELS, _read_rules_raw, _write_rules_raw
 
@@ -38,25 +38,6 @@ def _parse_rule_form(form):
         "actions": actions,
     }
 
-def _resolve_run_actions(rule_actions):
-    actions = []
-    non_terminal = [a for a in rule_actions if a["type"] not in TERMINAL_ACTIONS]
-    terminal = [a for a in rule_actions if a["type"] in TERMINAL_ACTIONS]
-    for action in non_terminal + terminal:
-        action_type = action["type"]
-        if action_type == "delete":
-            if not config.IMAP_TRASH_FOLDER:
-                raise RuntimeError("trash folder not configured — set it in the Config page")
-            actions.append({"type": "delete", "destination": config.IMAP_TRASH_FOLDER})
-        elif action_type == "spam":
-            if not config.IMAP_SPAM_FOLDER:
-                raise RuntimeError("spam folder not configured — set it in the Config page")
-            actions.append({"type": "spam", "destination": config.IMAP_SPAM_FOLDER})
-        elif action_type == "move":
-            actions.append({"type": "move", "destination": action["destination"]})
-        else:
-            actions.append({"type": action_type})
-    return actions
 
 @app.route("/rules/new", methods=["GET", "POST"])
 @_require_auth
@@ -169,11 +150,13 @@ def rule_run(index):
 
     logger.debug("Rule run: evaluating %s email(s) against rule '%s'", len(rows), rule["name"])
 
-    try:
-        resolved_actions = _resolve_run_actions(rule["actions"])
-    except RuntimeError as e:
-        logger.error("Rule run: cannot execute rule '%s': %s", rule["name"], e)
-        return redirect(url_for("rules_list", run_result="Rule '%s' failed: %s" % (rule["name"], e)))
+    resolved_actions, missing = resolve_actions(rule["actions"])
+    if missing:
+        for m in missing:
+            folder = "trash" if m == "delete" else "spam"
+            msg = "%s folder not configured — set it in the Config page" % folder
+            logger.error("Rule run: cannot execute rule '%s': %s", rule["name"], msg)
+            return redirect(url_for("rules_list", run_result="Rule '%s' failed: %s" % (rule["name"], msg)))
 
     needs_rfc822 = any(a["type"] in {"learn_spam", "learn_ham"} for a in resolved_actions)
 
@@ -276,7 +259,8 @@ def rule_run(index):
                     try:
                         imap.execute_action(client, action, uid, email_id=email_id)
                         executed.append(action)
-                        actioned += 1
+                        if not config.DRYRUN:
+                            actioned += 1
                     except Exception as e:
                         logger.error(
                             "Rule run: failed action %s on UID %s: %s",

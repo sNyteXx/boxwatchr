@@ -10,7 +10,7 @@ from boxwatchr.web.app import start_dashboard
 from boxwatchr.imap import FatalImapError
 from boxwatchr.notes import action_sentence, failed_action_sentence, skipped_learn_sentence, build_notes_opener
 from boxwatchr.database import set_processing, clear_email_id_from_logs, enqueue_email, enqueue_email_update, get_known_uids, get_unprocessed_emails, get_email_by_message_id, update_email_uid
-from boxwatchr.rules import watch_rules, TERMINAL_ACTIONS
+from boxwatchr.rules import watch_rules, TERMINAL_ACTIONS, resolve_actions
 from boxwatchr.logger import get_logger
 
 logger = get_logger("boxwatchr.main")
@@ -57,31 +57,14 @@ def _fatal_exit(message):
     health.fatal_shutdown()
 
 def _resolve_rule_actions(rule_actions, uid, email_id):
-    actions = []
-    non_terminal = [a for a in rule_actions if a["type"] not in TERMINAL_ACTIONS]
-    terminal = [a for a in rule_actions if a["type"] in TERMINAL_ACTIONS]
-    for action in non_terminal + terminal:
-        action_type = action["type"]
-        if action_type == "move":
-            actions.append({"type": "move", "destination": action["destination"]})
-        elif action_type == "delete":
-            if config.IMAP_TRASH_FOLDER:
-                actions.append({"type": "delete", "destination": config.IMAP_TRASH_FOLDER})
-            else:
-                logger.error(
-                    "Cannot execute 'delete' action for UID %s: trash folder not configured. Set it in the Config page.",
-                    uid, extra={"email_id": email_id}
-                )
-        elif action_type == "spam":
-            if config.IMAP_SPAM_FOLDER:
-                actions.append({"type": "spam", "destination": config.IMAP_SPAM_FOLDER})
-            else:
-                logger.error(
-                    "Cannot execute 'spam' action for UID %s: spam folder not configured. Set it in the Config page.",
-                    uid, extra={"email_id": email_id}
-                )
-        else:
-            actions.append({"type": action_type})
+    actions, missing = resolve_actions(rule_actions)
+    for action_type in missing:
+        folder = "trash" if action_type == "delete" else "spam"
+        logger.error(
+            "Cannot execute '%s' action for UID %s: %s folder not configured. Set it in the Config page.",
+            action_type, uid, folder,
+            extra={"email_id": email_id}
+        )
     return actions
 
 def _decode(value):
@@ -377,12 +360,26 @@ def process_email(client, uid, message):
             extra={"email_id": email_id}
         )
 
-        rspamd_learned = None
-        for action in actions:
+        imap_actions = [a for a in actions if a["type"] not in {"learn_spam", "learn_ham"}]
+        learn_actions = [a for a in actions if a["type"] in {"learn_spam", "learn_ham"}]
+
+        for action in imap_actions:
             action_type = action["type"]
             logger.debug(
                 "Executing action %s (destination=%s) for UID %s",
                 action_type, action.get("destination") or "none", uid,
+                extra={"email_id": email_id}
+            )
+            imap.execute_action(client, action, uid, email_id=email_id)
+            if action_type in TERMINAL_ACTIONS:
+                break
+
+        rspamd_learned = None
+        for action in learn_actions:
+            action_type = action["type"]
+            logger.debug(
+                "Executing action %s for UID %s",
+                action_type, uid,
                 extra={"email_id": email_id}
             )
             if action_type == "learn_spam":
@@ -399,10 +396,6 @@ def process_email(client, uid, message):
                         rspamd_learned = "ham"
                 else:
                     rspamd_learned = "ham"
-            else:
-                imap.execute_action(client, action, uid, email_id=email_id)
-            if action_type in TERMINAL_ACTIONS:
-                break
 
         notes_parts = [build_notes_opener(matched_rule, config.DRYRUN)]
         if actions:

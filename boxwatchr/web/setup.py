@@ -17,6 +17,9 @@ def _test_imap_rate_limited():
         attempts = [t for t in _test_imap_attempts.get(ip, []) if now - t < _TEST_IMAP_WINDOW]
         attempts.append(now)
         _test_imap_attempts[ip] = attempts
+        stale = [k for k, v in _test_imap_attempts.items() if k != ip and not any(now - t < _TEST_IMAP_WINDOW for t in v)]
+        for k in stale:
+            del _test_imap_attempts[k]
         return len(attempts) > _TEST_IMAP_MAX_ATTEMPTS
 
 @app.route("/setup", methods=["GET"])

@@ -4,7 +4,7 @@ from email import message_from_string
 from flask import render_template, redirect, url_for, abort
 from boxwatchr import config, imap, spam
 from boxwatchr.database import get_connection, set_user_action
-from boxwatchr.web.app import app, _require_auth, _require_csrf, _score_class, logger
+from boxwatchr.web.app import app, _require_auth, _require_csrf, _score_class, _is_spammed, logger
 
 def _extract_message_id(raw_headers):
     if not raw_headers:
@@ -93,10 +93,7 @@ def email_detail(email_id):
         except json.JSONDecodeError:
             pass
 
-    spammed = (
-        any(a.get("type") == "spam" for a in actions)
-        and row["user_action"] != "ham"
-    )
+    spammed = _is_spammed(actions, row["user_action"])
 
     email = {
         "id": row["id"],

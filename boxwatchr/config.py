@@ -25,7 +25,7 @@ IMAP_TRASH_FOLDER = None
 IMAP_SPAM_FOLDER = None
 IMAP_TLS_MODE = "ssl"
 
-LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+LOG_LEVEL = "INFO"
 DRYRUN = False
 WEB_PASSWORD = ""
 DB_PRUNE_DAYS = 0

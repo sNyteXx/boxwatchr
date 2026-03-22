@@ -3,7 +3,7 @@ import sqlite3
 from flask import render_template, request
 from boxwatchr import config
 from boxwatchr.database import get_connection
-from boxwatchr.web.app import app, _require_auth, _score_class, _EMAILS_PAGE_SIZE, logger
+from boxwatchr.web.app import app, _require_auth, _score_class, _is_spammed, _EMAILS_PAGE_SIZE, logger
 
 @app.route("/emails")
 @_require_auth
@@ -45,10 +45,7 @@ def emails():
             actions = json.loads(row["actions"] or "[]")
         except json.JSONDecodeError:
             actions = []
-        spammed = (
-            any(a.get("type") == "spam" for a in actions)
-            and row["user_action"] != "ham"
-        )
+        spammed = _is_spammed(actions, row["user_action"])
         email_list.append({
             "id": row["id"],
             "sender": row["sender"],

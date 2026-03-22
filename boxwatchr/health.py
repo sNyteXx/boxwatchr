@@ -4,6 +4,7 @@ import signal
 import time
 import socket
 import threading
+import collections
 import requests
 from imapclient import IMAPClient
 from boxwatchr import config
@@ -11,6 +12,8 @@ from boxwatchr.database import flush as flush_db, initialize as db_initialize, s
 from boxwatchr import imap as _imap
 from boxwatchr.rules import load_rules as _load_rules
 from boxwatchr.logger import get_logger
+
+_CheckResult = collections.namedtuple("_CheckResult", ["ok", "reason", "fatal"])
 
 logger = get_logger("boxwatchr.health")
 
@@ -27,10 +30,10 @@ def _tcp_check(host, port):
         s = socket.create_connection((host, port), timeout=2)
         s.close()
         logger.debug("TCP check: %s:%s is reachable", host, port)
-        return True, ""
+        return _CheckResult(True, "", False)
     except OSError as e:
         logger.debug("TCP check: %s:%s unreachable: %s", host, port, e)
-        return False, str(e)
+        return _CheckResult(False, str(e), False)
 
 def _check_rspamd():
     try:
@@ -39,12 +42,12 @@ def _check_rspamd():
         response = requests.get(url, timeout=2)
         if response.text.strip() == "pong":
             logger.debug("rspamd health check: OK")
-            return True, ""
+            return _CheckResult(True, "", False)
         logger.debug("rspamd health check: unexpected response: %s", response.text.strip())
-        return False, "unexpected response: %s" % response.text.strip()
+        return _CheckResult(False, "unexpected response: %s" % response.text.strip(), False)
     except requests.exceptions.RequestException as e:
         logger.debug("rspamd health check: failed: %s", e)
-        return False, str(e)
+        return _CheckResult(False, str(e), False)
 
 def _check_redis():
     return _tcp_check("127.0.0.1", 6379)
@@ -57,7 +60,7 @@ def _check_web():
 
 def _check_imap():
     if not config.SETUP_COMPLETE or not config.IMAP_HOST:
-        return True, "", False
+        return _CheckResult(True, "", False)
     logger.debug("IMAP health check: connecting to %s:%s", config.IMAP_HOST, config.IMAP_PORT)
     try:
         _use_ssl = config.IMAP_TLS_MODE != "none" and config.IMAP_TLS_MODE != "starttls"
@@ -66,7 +69,7 @@ def _check_imap():
             client.starttls()
     except Exception as e:
         logger.debug("IMAP health check: connection failed: %s", e)
-        return False, str(e), False
+        return _CheckResult(False, str(e), False)
 
     try:
         client.login(config.IMAP_USERNAME, config.IMAP_PASSWORD)
@@ -76,13 +79,13 @@ def _check_imap():
         except Exception:
             pass
         logger.debug("IMAP health check: authentication failed: %s", e)
-        return False, "authentication failed: %s" % e, True
+        return _CheckResult(False, "authentication failed: %s" % e, True)
 
     try:
         client.select_folder(config.IMAP_FOLDER)
         client.logout()
         logger.debug("IMAP health check: OK")
-        return True, "", False
+        return _CheckResult(True, "", False)
     except Exception:
         reason = "folder %r does not exist on the server" % config.IMAP_FOLDER
         try:
@@ -96,7 +99,7 @@ def _check_imap():
         except Exception:
             pass
         logger.debug("IMAP health check: folder check failed for %r", config.IMAP_FOLDER)
-        return False, reason, True
+        return _CheckResult(False, reason, True)
 
 def initialize_database():
     print(_DIVIDER, flush=True)
@@ -160,18 +163,16 @@ def start_services_sequentially():
 
         while time.monotonic() < deadline:
             result = check_fn()
-            ok, reason = result[0], result[1]
-            fatal = result[2] if len(result) > 2 else False
-            if ok:
+            if result.ok:
                 ready = True
                 break
-            if fatal:
+            if result.fatal:
                 logger.error(
                     "Fatal: %s service failed to start: %s\n\nShutting down.",
-                    name, reason
+                    name, result.reason
                 )
                 fatal_shutdown()
-            last_reason = reason
+            last_reason = result.reason
             logger.debug("Waiting for %s to be ready...", name)
             time.sleep(_STARTUP_CHECK_INTERVAL)
 
@@ -329,7 +330,14 @@ def service_check():
         "web": _check_web,
         "imap": _check_imap,
     }
-    failed = [name for name, fn in checks.items() if not fn()[0]]
+    failed = []
+    for name, fn in checks.items():
+        result = fn()
+        if result.fatal:
+            logger.error("Fatal service failure (%s): %s. Shutting down.", name, result.reason)
+            fatal_shutdown()
+        if not result.ok:
+            failed.append(name)
     if failed:
         logger.warning("Service check failed: %s", ", ".join(failed))
     else:
