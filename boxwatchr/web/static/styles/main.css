@@ -9,13 +9,17 @@
 }
 
 .site-brand {
-    color: var(--bs-primary) !important;
+    background: linear-gradient(to bottom, #7aadd8, #4878b0);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
     letter-spacing: 1px;
 }
 
 .site-brand::before {
     content: "> ";
-    opacity: 0.5;
+    -webkit-text-fill-color: #2f5c8e;
+    color: #2f5c8e;
 }
 
 .site-nav-link {
@@ -62,7 +66,7 @@
    ============================================================ */
 
 body {
-    font-family: "Geist Mono", ui-monospace, monospace;
+    font-family: "Source Code Pro", ui-monospace, monospace;
     font-size: 13px;
     line-height: 1.6;
 }
@@ -153,39 +157,6 @@ body {
 }
 
 /* ============================================================
-   Definition list (email detail)
-   ============================================================ */
-
-dl {
-    display: grid;
-    grid-template-columns: 160px 1fr;
-    gap: 6px 16px;
-    margin: 0;
-}
-
-@media (max-width: 480px) {
-    dl {
-        grid-template-columns: 1fr;
-        gap: 0;
-    }
-
-    dt {
-        margin-top: 10px;
-    }
-}
-
-dt {
-    color: var(--bs-secondary-color);
-    font-size: 12px;
-    padding-top: 2px;
-}
-
-dd {
-    word-break: break-word;
-    margin: 0;
-}
-
-/* ============================================================
    Table column constraints
    ============================================================ */
 
@@ -205,15 +176,48 @@ dd {
 }
 
 /* ============================================================
-   Table headers
+   Tables
    ============================================================ */
 
-th {
-    font-weight: 600 !important;
-    color: var(--bs-body-color) !important;
-    letter-spacing: 0.3px;
+.table {
+    --bs-table-bg: transparent;
+    --bs-table-striped-bg: transparent;
+    --bs-table-hover-bg: rgba(255, 255, 255, 0.03);
 }
 
+thead tr {
+    background-color: rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+th {
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--bs-secondary-color) !important;
+}
+
+/* Left-column label cell in key-value detail tables (no thead) */
+.detail-label {
+    width: 140px;
+    white-space: nowrap;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--bs-secondary-color);
+    vertical-align: middle;
+}
+
+/* ============================================================
+   Stat score distribution progress bar
+   ============================================================ */
+
+.score-progress {
+    height: 6px;
+    max-width: 100px;
+}
 
 /* ============================================================
    Log table row colors
@@ -231,6 +235,10 @@ th {
     color: var(--bs-danger-text-emphasis);
 }
 
+.log-linked {
+    cursor: pointer;
+}
+
 /* ============================================================
    Card section headings
    ============================================================ */
@@ -239,10 +247,11 @@ th {
     color: #5d9ee3 !important;
     font-weight: 700 !important;
     font-size: 11px !important;
+    text-transform: uppercase;
     letter-spacing: 1px;
     padding-bottom: 8px;
     border-bottom: 1px solid var(--bs-border-color);
-    margin-bottom: 12px !important;
+    margin-bottom: 12px;
 }
 
 .card-subtitle::before {
@@ -250,19 +259,54 @@ th {
     content: "// ";
 }
 
+/* When card-subtitle shares a row with another element (e.g. an Add button),
+   put the border on the row container instead of the h2 itself. */
+.card-subtitle-row {
+    border-bottom: 1px solid var(--bs-border-color);
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+}
+
+.card-subtitle-row .card-subtitle {
+    border-bottom: none;
+    padding-bottom: 0;
+    margin-bottom: 0 !important;
+}
+
+/* ============================================================
+   Rule editor condition/action row column widths
+   ============================================================ */
+
+.cond-field {
+    min-width: 200px;
+}
+
+.cond-operator {
+    width: 150px;
+    flex-shrink: 0;
+}
+
+.action-type {
+    width: 210px;
+    flex-shrink: 0;
+}
+
+/* ============================================================
+   Inline section labels (e.g. "Conditions", "Actions" in rule cards)
+   ============================================================ */
+
+.section-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--bs-secondary-color);
+    margin-bottom: 8px;
+}
 
 /* ============================================================
    Stat cards
    ============================================================ */
-
-.stat-label {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--bs-secondary-color);
-    font-weight: 500;
-    margin-bottom: 6px;
-}
 
 .stat-value {
     font-size: 28px;
@@ -345,4 +389,26 @@ pre {
 .login-brand {
     font-size: 20px;
     font-weight: 700;
+}
+
+/* ============================================================
+   Form controls
+   ============================================================ */
+
+.form-control,
+.form-select {
+    font-size: 13px;
+}
+
+/* ============================================================
+   Form labels
+   ============================================================ */
+
+.form-label {
+    font-size: 11px !important;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--bs-secondary-color) !important;
+    margin-bottom: 4px;
 }

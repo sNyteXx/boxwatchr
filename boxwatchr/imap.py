@@ -7,7 +7,7 @@ from boxwatchr.logger import get_logger
 
 logger = get_logger("boxwatchr.imap")
 
-IDLE_TIMEOUT = 28
+IDLE_TIMEOUT = 1740  # 29 minutes -- RFC 2177 recommended maximum before server-side timeout (typically 30m)
 
 _stop_event = threading.Event()
 _reconnect_event = threading.Event()

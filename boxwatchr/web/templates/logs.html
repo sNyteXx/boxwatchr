@@ -37,15 +37,15 @@
     <table class="table table-sm table-hover">
         <thead>
             <tr>
-                <th class="col-date text-secondary fw-normal small">Time</th>
-                <th class="text-secondary fw-normal small">Level</th>
-                <th class="text-secondary fw-normal small">Logger</th>
-                <th class="text-secondary fw-normal small">Message</th>
+                <th class="col-date">Time</th>
+                <th>Level</th>
+                <th>Logger</th>
+                <th>Message</th>
             </tr>
         </thead>
         <tbody>
             {% for row in log_rows %}
-            <tr class="log-{{ row.level }}{% if row.email_id %} log-linked{% endif %}"{% if row.email_id %} style="cursor:pointer" onclick="location.href='/emails/{{ row.email_id }}'"{% endif %}>
+            <tr class="log-{{ row.level }}{% if row.email_id %} log-linked{% endif %}"{% if row.email_id %} onclick="location.href='/emails/{{ row.email_id }}'"{% endif %}>
                 <td class="col-date small">{{ row.logged_at | localtime }}</td>
                 <td class="small">{{ row.level }}</td>
                 <td class="small">{{ row.logger_name }}</td>

@@ -6,78 +6,95 @@
 
 <div class="card mb-4">
     <div class="card-body">
-        <h2 class="card-subtitle text-secondary text-uppercase small fw-semibold mb-3">Summary</h2>
-        <dl>
-            <dt>ID</dt>
-            <dd><code>{{ email.id }}</code></dd>
-
-            <dt>Sender</dt>
-            <dd>{{ email.sender or "—" }}</dd>
-
-            <dt>Recipients</dt>
-            <dd>{{ email.recipients or "—" }}</dd>
-
-            <dt>Subject</dt>
-            <dd>{{ email.subject or "—" }}</dd>
-
-            <dt>Date Received</dt>
-            <dd>{{ email.date_received or "—" }}</dd>
-
-            <dt>Folder</dt>
-            <dd>{{ email.folder }}</dd>
-
-            <dt>IMAP UID</dt>
-            <dd>{{ email.uid }}</dd>
-
-            <dt>Message Size</dt>
-            <dd>{% if email.message_size %}{{ "{:,}".format(email.message_size) }} bytes{% else %}—{% endif %}</dd>
-
-            <dt>Spam Score</dt>
-            <dd>
-                {% if email.spam_score is not none %}
-                <span class="{{ email.score_class }}">{{ "%.2f"|format(email.spam_score) }}</span>
-                {% else %}
-                —
+        <h2 class="card-subtitle">Summary</h2>
+        <table class="table table-sm mb-0">
+            <tbody>
+                <tr>
+                    <td class="detail-label">ID</td>
+                    <td><code>{{ email.id }}</code></td>
+                </tr>
+                <tr>
+                    <td class="detail-label">Sender</td>
+                    <td>{{ email.sender or "—" }}</td>
+                </tr>
+                <tr>
+                    <td class="detail-label">Recipients</td>
+                    <td>{{ email.recipients or "—" }}</td>
+                </tr>
+                <tr>
+                    <td class="detail-label">Subject</td>
+                    <td>{{ email.subject or "—" }}</td>
+                </tr>
+                <tr>
+                    <td class="detail-label">Date Received</td>
+                    <td>{{ email.date_received or "—" }}</td>
+                </tr>
+                <tr>
+                    <td class="detail-label">Folder</td>
+                    <td>{{ email.folder }}</td>
+                </tr>
+                <tr>
+                    <td class="detail-label">IMAP UID</td>
+                    <td>{{ email.uid }}</td>
+                </tr>
+                <tr>
+                    <td class="detail-label">Message Size</td>
+                    <td>{% if email.message_size %}{{ "{:,}".format(email.message_size) }} bytes{% else %}—{% endif %}</td>
+                </tr>
+                <tr>
+                    <td class="detail-label">Spam Score</td>
+                    <td>
+                        {% if email.spam_score is not none %}
+                        <span class="{{ email.score_class }}">{{ "%.2f"|format(email.spam_score) }}</span>
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
+                </tr>
+                <tr>
+                    <td class="detail-label">Status</td>
+                    <td>
+                        {% if email.processed %}
+                        <span class="badge badge-ok">Processed</span>
+                        {% else %}
+                        <span class="badge badge-pending">Pending</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                <tr>
+                    <td class="detail-label">Processed At</td>
+                    <td>{{ email.processed_at | localtime or "—" }}</td>
+                </tr>
+                <tr>
+                    <td class="detail-label">Notes</td>
+                    <td>{{ email.processed_notes or "—" }}</td>
+                </tr>
+                {% if email.rule %}
+                <tr>
+                    <td class="detail-label">Rule Matched</td>
+                    <td>{{ email.rule.name }}</td>
+                </tr>
                 {% endif %}
-            </dd>
-
-            <dt>Status</dt>
-            <dd>
-                {% if email.processed %}
-                <span class="badge badge-ok">Processed</span>
-                {% else %}
-                <span class="badge badge-pending">Pending</span>
+                {% if email.user_action %}
+                <tr>
+                    <td class="detail-label">User Override</td>
+                    <td>
+                        {% if email.user_action == "ham" %}
+                        <span class="badge badge-ham">Not Spam</span>
+                        {% elif email.user_action == "spam" %}
+                        <span class="badge badge-spam">Confirmed Spam</span>
+                        {% endif %}
+                    </td>
+                </tr>
                 {% endif %}
-            </dd>
-
-            <dt>Processed At</dt>
-            <dd>{{ email.processed_at | localtime or "—" }}</dd>
-
-            <dt>Notes</dt>
-            <dd>{{ email.processed_notes or "—" }}</dd>
-
-            {% if email.rule %}
-            <dt>Rule Matched</dt>
-            <dd>{{ email.rule.name }}</dd>
-            {% endif %}
-
-            {% if email.user_action %}
-            <dt>User Override</dt>
-            <dd>
-                {% if email.user_action == "ham" %}
-                <span class="badge badge-ham">Not Spam</span>
-                {% elif email.user_action == "spam" %}
-                <span class="badge badge-spam">Confirmed Spam</span>
-                {% endif %}
-            </dd>
-            {% endif %}
-        </dl>
+            </tbody>
+        </table>
     </div>
 </div>
 
 <div class="card mb-4">
     <div class="card-body">
-        <h2 class="card-subtitle text-secondary text-uppercase small fw-semibold mb-3">Manual Review</h2>
+        <h2 class="card-subtitle">Manual Review</h2>
         <div class="d-flex gap-2 flex-wrap action-forms">
             {% if email.spammed or email.user_action == "spam" %}
             <form method="post" action="/emails/{{ email.id }}/not-spam">
@@ -105,7 +122,7 @@
 {% if email.history %}
 <div class="card mb-4">
     <div class="card-body">
-        <h2 class="card-subtitle text-secondary text-uppercase small fw-semibold mb-3">History</h2>
+        <h2 class="card-subtitle">History</h2>
         <table class="table table-sm mb-0">
             <thead>
                 <tr>
@@ -142,7 +159,7 @@
 {% if email.attachments %}
 <div class="card mb-4">
     <div class="card-body">
-        <h2 class="card-subtitle text-secondary text-uppercase small fw-semibold mb-3">Attachments</h2>
+        <h2 class="card-subtitle">Attachments</h2>
         <table class="table table-sm mb-0">
             <thead>
                 <tr>
@@ -168,7 +185,7 @@
 {% if email.raw_headers %}
 <div class="card mb-4">
     <div class="card-body">
-        <h2 class="card-subtitle text-secondary text-uppercase small fw-semibold mb-3">Raw Headers</h2>
+        <h2 class="card-subtitle">Raw Headers</h2>
         <pre class="mb-0">{{ email.raw_headers }}</pre>
     </div>
 </div>
@@ -177,7 +194,7 @@
 {% if logs %}
 <div class="card mb-4">
     <div class="card-body">
-        <h2 class="card-subtitle text-secondary text-uppercase small fw-semibold mb-3">Log Entries</h2>
+        <h2 class="card-subtitle">Log Entries</h2>
         <div class="table-responsive">
             <table class="table table-sm log-table mb-0">
                 <thead>
