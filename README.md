@@ -289,17 +289,17 @@ This is how you should start out. Run it in dry run mode for a day or two, watch
 
 ### First-run workflow in Dry Run mode
 
-Here is the recommended order of operations when you are starting fresh with Dry Run enabled:
+Here is the recommended order of operations when you are starting fresh with Dry Run enabled (after you have completed the initial setup):
 
 1. **Start the container.** boxwatchr connects to your inbox, scans all existing messages, scores them with rspamd, and logs them to the database. At this point no rules exist yet, so every email is logged with "No rule matched."
 
-2. **Create your rules.** Go to the Rules page and build your rules. The emails already in the database are unaffected by this -- they were processed before the rules existed.
+2. **Create your rules.** Go to the Rules page and build your rules. The emails already in the database will be unaffected by this because they were processed before the rules existed.
 
 3. **Test your rules against your existing mail.** You have two options:
 
    - **Run Rule (easiest):** On the Rules page, click **Run Rule** on each rule in order from top to bottom. Each run evaluates that rule against every email currently in your watched folder and writes a `[DRY RUN]` note showing what would have happened. Do them in order because that is how they will run in production.
 
-   - **Restart the container:** On startup, boxwatchr automatically re-evaluates all unprocessed emails against your current rules in priority order -- exactly as the live pipeline would behave. This gives you the most realistic picture of how your rules interact with each other.
+   - **Restart the container:** On startup, boxwatchr automatically re-evaluates all unprocessed emails against your current rules in priority order exactly as the live pipeline would behave. This gives you the most realistic picture of how your rules interact with each other.
 
 4. **Review the results.** Go to the Emails page and read the notes column. Each email shows which rule matched and what action would have been taken. If something looks wrong, check the Logs page for the detailed condition trace for that email.
 
