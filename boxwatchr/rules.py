@@ -17,7 +17,7 @@ _rules_lock = threading.Lock()
 
 TERMINAL_ACTIONS = {"move"}
 
-_TEXT_OPERATORS = {"equals", "contains", "is_empty"}
+_TEXT_OPERATORS = {"equals", "not_equals", "contains", "not_contains", "is_empty"}
 _NUMERIC_OPERATORS = {"greater_than", "less_than", "greater_than_or_equal", "less_than_or_equal"}
 
 def load_rules(path):
@@ -371,6 +371,9 @@ def _apply_operator(operator, field_value, value, field_name, rule_name):
                 )
             return result
 
+        if operator == "not_equals":
+            return normalized_field != normalized_value
+
         if operator == "contains":
             result = normalized_value in normalized_field
             if result and normalized_field != field_value.lower():
@@ -380,10 +383,17 @@ def _apply_operator(operator, field_value, value, field_name, rule_name):
                 )
             return result
 
+        if operator == "not_contains":
+            return normalized_value not in normalized_field
+
     if operator == "equals":
         return field_value == value
+    if operator == "not_equals":
+        return field_value != value
     if operator == "contains":
         return value in field_value
+    if operator == "not_contains":
+        return value not in field_value
 
     logger.warning("Unknown operator %r in rule '%s' field %s — condition will not match", operator, rule_name, field_name)
     return False

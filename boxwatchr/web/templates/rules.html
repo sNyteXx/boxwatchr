@@ -58,7 +58,9 @@
                     {% for c in rule.conditions %}
                     {% set op_labels = {
                         "equals": "equals",
+                        "not_equals": "does not equal",
                         "contains": "contains",
+                        "not_contains": "does not contain",
                         "is_empty": "is empty",
                         "greater_than": ">",
                         "less_than": "<",

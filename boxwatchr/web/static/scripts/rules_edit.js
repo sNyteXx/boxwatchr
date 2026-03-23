@@ -1,4 +1,4 @@
-var TEXT_OPERATORS_HTML = '<option value="equals">equals</option><option value="contains">contains</option><option value="is_empty">is empty</option>';
+var TEXT_OPERATORS_HTML = '<option value="equals">equals</option><option value="not_equals">does not equal</option><option value="contains">contains</option><option value="not_contains">does not contain</option><option value="is_empty">is empty</option>';
 var NUMERIC_OPERATORS_HTML = '<option value="greater_than">greater than</option><option value="less_than">less than</option><option value="greater_than_or_equal">greater than or equal</option><option value="less_than_or_equal">less than or equal</option>';
 
 function onFieldChange(select) {

@@ -93,7 +93,9 @@
                         <option value="less_than_or_equal" {% if c.operator == "less_than_or_equal" %}selected{% endif %}>less than or equal</option>
                         {% else %}
                         <option value="equals" {% if c.operator == "equals" %}selected{% endif %}>equals</option>
+                        <option value="not_equals" {% if c.operator == "not_equals" %}selected{% endif %}>does not equal</option>
                         <option value="contains" {% if c.operator == "contains" %}selected{% endif %}>contains</option>
+                        <option value="not_contains" {% if c.operator == "not_contains" %}selected{% endif %}>does not contain</option>
                         <option value="is_empty" {% if c.operator == "is_empty" %}selected{% endif %}>is empty</option>
                         {% endif %}
                     </select>
@@ -198,7 +200,9 @@
         </select>
         <select name="condition_operator" class="form-select cond-operator" onchange="onOperatorChange(this)">
             <option value="equals">equals</option>
+            <option value="not_equals">does not equal</option>
             <option value="contains">contains</option>
+            <option value="not_contains">does not contain</option>
             <option value="is_empty">is empty</option>
         </select>
         <input name="condition_value" type="text" class="form-control value-text flex-grow-1" placeholder="Value">

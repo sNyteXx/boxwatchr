@@ -369,25 +369,28 @@ def process_email(client, uid, message):
         rspamd_learned = None
         for action in learn_actions:
             action_type = action["type"]
-            logger.debug(
-                "Executing action %s for UID %s",
-                action_type, uid,
-                extra={"email_id": email_id}
-            )
+            if config.DRYRUN:
+                logger.debug(
+                    "DRYRUN: would execute action %s for UID %s",
+                    action_type, uid,
+                    extra={"email_id": email_id}
+                )
+            else:
+                logger.debug(
+                    "Executing action %s for UID %s",
+                    action_type, uid,
+                    extra={"email_id": email_id}
+                )
             if action_type == "learn_spam":
                 if not config.DRYRUN:
                     ok = spam.learn_spam(raw_message, email_id=email_id)
                     if ok:
                         rspamd_learned = "spam"
-                else:
-                    rspamd_learned = "spam"
             elif action_type == "learn_ham":
                 if not config.DRYRUN:
                     ok = spam.learn_ham(raw_message, email_id=email_id)
                     if ok:
                         rspamd_learned = "ham"
-                else:
-                    rspamd_learned = "ham"
 
         notes_parts = [build_notes_opener(matched_rule, config.DRYRUN)]
         if actions:

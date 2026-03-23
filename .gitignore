@@ -208,6 +208,8 @@ __marimo__/
 
 # Database files
 *.db
+*.db-wal
+*.db-shm
 
 # Rules file
 config/rules.yaml
