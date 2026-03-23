@@ -186,6 +186,7 @@ th {
 
 .card-body {
     background-color: var(--surface-card);
+    box-shadow: 0 0 5px rgba(0,0,0,0.5);
 }
 
 .card-subtitle {
@@ -378,6 +379,15 @@ th {
 .action-type {
     width: 210px;
     flex-shrink: 0;
+}
+
+/* ============================================================
+   Overlays
+   ============================================================ */
+
+.rule-run-overlay {
+    z-index: 9999;
+    background-color: rgba(0, 0, 0, 0.85);
 }
 
 /* ============================================================
