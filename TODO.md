@@ -2,12 +2,12 @@
 
 Self-hosted IMAP email filtering daemon. Single Docker container with supervisord. Monitors IMAP via IDLE/polling, scores mail with rspamd, evaluates rules, executes IMAP actions, logs to SQLite. Flask dashboard on port 80.
 
-### Critical Fixes
+## Critical Fixes
+
 - [ ] **rspamd error**: "Cannot receive neighbours data: Network error" on `local/neighbours` (benign or not?)
 
-### Roadmap Changes & Implementations
-- [x] **Periodic rescan** to catch emails missed by IMAP IDLE
-    - Implemented as a 5-minute interval inside the IDLE loop. The IDLE session terminates early when the interval is due, `startup_scan()` runs against the DB, then IDLE resumes. Polling mode does not need this since it already catches missed messages on the next cycle.
+## Roadmap Changes & Implementations
+
 - [ ] **Support multiple IMAP accounts**
     - [ ] Rules should be associated to IMAP account custom ID
     - [ ] "IMAP Account" drop-down on the following pages, with the first account created as the default selected/populated on page loads:
@@ -29,4 +29,7 @@ Self-hosted IMAP email filtering daemon. Single Docker container with supervisor
 - [ ] **Investigate better async threading** for multiple IMAP accounts/database calls/anything that needs threading
 - [ ] **Investigate proper GIT handling** for Claude so I can focus more on issues and code changes as opposed to figuring out how Github actually works (for now...I really need to learn Git shit)
 
-### Completed Tasks ✓
+## Completed Tasks ✓
+
+- [x] **Periodic rescan** to catch emails missed by IMAP IDLE (2026-03-24, [#11](https://github.com/nulcraft/boxwatchr/pull/11))
+    - Implemented as a 5-minute interval inside the IDLE loop. The IDLE session terminates early when the interval is due, `startup_scan()` runs against the DB, then IDLE resumes. Polling mode does not need this since it already catches missed messages on the next cycle.
