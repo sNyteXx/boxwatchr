@@ -463,6 +463,10 @@ Check the Logs page first. Something is almost certainly logged there. Common is
 - No rules are matching. Check the Emails page. If the email shows up there, boxwatchr saw it. If no rule matched, the matched rule column will be empty.
 - The IMAP connection dropped and didn't reconnect. Check docker logs.
 
+**I moved emails from another folder and some were not processed**
+
+When using IMAP IDLE, boxwatchr detects new messages when the server sends a notification. If you move a batch of emails at once, the notification can fire before all of them have landed in the folder. Messages that arrive after the check completes will be caught by the periodic rescan, which runs every 5 minutes and reconciles the folder against the database.
+
 **A rule isn't matching what I expect**
 
 Use the **Run** button on the rule to test it against your existing mail. If you need to see condition-level evaluation detail, set the log level to DEBUG in Config and check the Logs page for the email in question.
@@ -491,6 +495,6 @@ Running boxwatchr behind a reverse proxy is strongly recommended if your dashboa
 - Use your own domain instead of a raw IP address and port
 - Add HTTP basic authentication at the proxy level as an extra layer on top of (or instead of) the built-in web password
 
-Popular options include Nginx Proxy Manager, Caddy, Traefik, and nginx. Setup varies by choice and is outside the scope of this documentation.
+Popular options include Nginx Proxy Manager, Caddy, Traefik, and nginx. For nginx and Apache, example configurations are included in the `reverse-proxy/` directory of this repository. They cover SSL, OCSP stapling, security headers, IP-based access control, optional basic auth, and sub-path proxying for the rspamd web interface at `/rspamd/`.
 
 One note on authentication: if you use a reverse proxy project that supports single sign-on (SSO) or identity-aware proxy features, passing those authentication headers through to boxwatchr has not been tested. The built-in web password is the supported authentication method.
