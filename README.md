@@ -33,13 +33,13 @@ Think of it like email filters on steroids, with a spam engine backing up every 
 
 ## Screenshots
 
-<a href="screenshots/02-dashboard.png"><img src="screenshots/02-dashboard.png" width="100%"></a>
+<a href="images/screenshots/02-dashboard.png"><img src="images/screenshots/02-dashboard.png" width="100%"></a>
 
-<a href="screenshots/05-rules.png"><img src="screenshots/05-rules.png" width="100%"></a>
+<a href="images/screenshots/05-rules.png"><img src="images/screenshots/05-rules.png" width="100%"></a>
 
-<a href="screenshots/11-config.png"><img src="screenshots/11-config.png" width="100%"></a>
+<a href="images/screenshots/11-config.png"><img src="images/screenshots/11-config.png" width="100%"></a>
 
-[More screenshots here...](/screenshots/)
+[More screenshots here...](/images/screenshots/)
 
 ---
 
