@@ -104,12 +104,12 @@
 }
 
 .site-version {
-    font-size: var(--fz-xs);
-    font-weight: 400;
+    font-size: var(--fz-sm);
+    font-weight: 100;
     -webkit-text-fill-color: var(--bs-secondary-color);
     color: var(--bs-secondary-color);
-    opacity: 0.5;
-    margin-left: 4px;
+    opacity: 0.9;
+    margin-left: 6px;
     letter-spacing: 0;
 }
 
