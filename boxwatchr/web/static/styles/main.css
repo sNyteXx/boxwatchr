@@ -64,7 +64,7 @@
 .site-brand {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 6px;
     background: linear-gradient(to bottom, var(--c-primary-brand), var(--c-primary-grad));
     -webkit-background-clip: text;
     background-clip: text;
