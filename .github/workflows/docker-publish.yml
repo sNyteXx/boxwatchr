@@ -2,6 +2,8 @@ name: Build and push Docker image
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
 
@@ -31,24 +33,37 @@ jobs:
 
       - name: Extract version from tag
         id: version
+        if: startsWith(github.ref, 'refs/tags/')
         run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
-      - name: Build and push
+      - name: Build and push (main branch)
+        if: github.ref == 'refs/heads/main'
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           platforms: linux/amd64
           tags: |
-            ghcr.io/nulcraft/boxwatchr:${{ steps.version.outputs.version }}
-            ghcr.io/nulcraft/boxwatchr:latest
-            nulcraft/boxwatchr:${{ steps.version.outputs.version }}
-            nulcraft/boxwatchr:latest
+            ghcr.io/snytex/boxwatchr:main
+
+      - name: Build and push (release tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/snytex/boxwatchr:${{ steps.version.outputs.version }}
+            ghcr.io/snytex/boxwatchr:latest
+            snytex/boxwatchr:${{ steps.version.outputs.version }}
+            snytex/boxwatchr:latest
 
       - name: Update Docker Hub description
+        if: startsWith(github.ref, 'refs/tags/')
         uses: peter-evans/dockerhub-description@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: nulcraft/boxwatchr
+          repository: snytex/boxwatchr
           readme-filepath: ./DOCKER_HUB.md
