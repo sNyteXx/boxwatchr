@@ -45,6 +45,7 @@ jobs:
           platforms: linux/amd64
           tags: |
             ghcr.io/snytexx/boxwatchr:main
+            snytexx/boxwatchr:main
 
       - name: Build and push (release tag)
         if: startsWith(github.ref, 'refs/tags/')

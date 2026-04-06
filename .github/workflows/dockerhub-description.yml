@@ -21,5 +21,5 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: nulcraft/boxwatchr
+          repository: snytexx/boxwatchr
           readme-filepath: ./DOCKER_HUB.md

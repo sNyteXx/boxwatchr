@@ -17,11 +17,11 @@ boxwatchr connects to your email account over IMAP and for every new message it:
 
 ## Screenshots
 
-[![Dashboard](https://raw.githubusercontent.com/nulcraft/boxwatchr/main/images/screenshots/02-dashboard.png)](https://raw.githubusercontent.com/nulcraft/boxwatchr/main/images/screenshots/02-dashboard.png)
+[![Dashboard](https://raw.githubusercontent.com/sNyteXx/boxwatchr/main/images/screenshots/02-dashboard.png)](https://raw.githubusercontent.com/sNyteXx/boxwatchr/main/images/screenshots/02-dashboard.png)
 
-[![Rules](https://raw.githubusercontent.com/nulcraft/boxwatchr/main/images/screenshots/05-rules.png)](https://raw.githubusercontent.com/nulcraft/boxwatchr/main/images/screenshots/05-rules.png)
+[![Rules](https://raw.githubusercontent.com/sNyteXx/boxwatchr/main/images/screenshots/05-rules.png)](https://raw.githubusercontent.com/sNyteXx/boxwatchr/main/images/screenshots/05-rules.png)
 
-[![Config](https://raw.githubusercontent.com/nulcraft/boxwatchr/main/images/screenshots/11-config.png)](https://raw.githubusercontent.com/nulcraft/boxwatchr/main/images/screenshots/11-config.png)
+[![Config](https://raw.githubusercontent.com/sNyteXx/boxwatchr/main/images/screenshots/11-config.png)](https://raw.githubusercontent.com/sNyteXx/boxwatchr/main/images/screenshots/11-config.png)
 
 ---
 
@@ -46,10 +46,7 @@ docker run -d \
   -e PUID=1000 \
   -e PGID=1000 \
   -e TZ=America/New_York \
-  nulcraft/boxwatchr:latest
-```
-
-Replace `/path/to/config` and `/path/to/data` with absolute paths on your server. The `-e` flags are optional. Skip them to use the defaults (PUID/PGID 1000, UTC timezone, random rspamd password).
+  snytexx/boxwatchr:latest The `-e` flags are optional. Skip them to use the defaults (PUID/PGID 1000, UTC timezone, random rspamd password).
 
 ### Option 2: Docker Compose
 
@@ -58,7 +55,7 @@ Create `docker-compose.yml` in your `boxwatchr` folder:
 ```yaml
 services:
   boxwatchr:
-    image: nulcraft/boxwatchr:latest
+    image: snytexx/boxwatchr:latest
     container_name: boxwatchr
     restart: on-failure
     ports:
@@ -111,4 +108,4 @@ If you assign the container its own IP address, access it directly at `http://co
 
 ---
 
-Full documentation, reverse proxy examples, and source code on [GitHub](https://github.com/nulcraft/boxwatchr).
+Full documentation, reverse proxy examples, and source code on [GitHub](https://github.com/sNyteXx/boxwatchr).
