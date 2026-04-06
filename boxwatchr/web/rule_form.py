@@ -199,6 +199,7 @@ def rule_run(rule_id):
                     "recipients": [r for r in (email_row["recipients"] or "").split(",") if r],
                     "raw_headers": email_row["raw_headers"] or "",
                     "attachments": json.loads(email_row["attachments"] or "[]"),
+                    "date_received": email_row["date_received"] or "",
                 }
 
                 if not check_rule(rule, email_data, spam_score=email_row["spam_score"], email_id=email_id):

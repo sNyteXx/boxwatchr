@@ -1,4 +1,25 @@
 document.addEventListener("DOMContentLoaded", function() {
+    // Search / filter
+    var searchInput = document.getElementById("rules-search");
+    var searchEmpty = document.getElementById("rules-search-empty");
+
+    if (searchInput) {
+        searchInput.addEventListener("input", function() {
+            var query = this.value.trim().toLowerCase();
+            var cards = document.querySelectorAll(".rule-card");
+            var visibleCount = 0;
+            cards.forEach(function(card) {
+                var text = card.dataset.ruleText || "";
+                var match = !query || text.includes(query);
+                card.classList.toggle("d-none", !match);
+                if (match) visibleCount++;
+            });
+            if (searchEmpty) {
+                searchEmpty.classList.toggle("d-none", visibleCount > 0 || !query);
+            }
+        });
+    }
+
     // Export overlay
     var exportBtn = document.getElementById("export-btn");
     var exportOverlay = document.getElementById("export-overlay");

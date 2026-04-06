@@ -2,6 +2,7 @@ import re
 import json
 import threading
 import tldextract
+from datetime import datetime, timezone
 
 _tldextract = tldextract.TLDExtract(cache_dir="/app/data/tldextract")
 from boxwatchr.logger import get_logger
@@ -70,8 +71,10 @@ def validate_rule(rule):
         "recipient_domain_root", "recipient_domain_tld",
         "subject", "raw_headers",
         "attachment_name", "attachment_extension", "attachment_content_type",
-        "rspamd_score",
+        "rspamd_score", "email_age_days",
     }
+
+    _NUMERIC_FIELDS = {"rspamd_score", "email_age_days"}
 
     valid_actions = {"move", "mark_read", "mark_unread", "flag", "unflag", "learn_spam", "learn_ham"}
     contradictory_pairs = [{"mark_read", "mark_unread"}, {"flag", "unflag"}, {"learn_spam", "learn_ham"}]
@@ -94,19 +97,19 @@ def validate_rule(rule):
             logger.warning("Rule '%s' condition %s has unknown field '%s' and will be skipped", name, i + 1, field)
             return None
 
-        if field == "rspamd_score":
+        if field in _NUMERIC_FIELDS:
             if operator not in _NUMERIC_OPERATORS:
                 logger.warning(
-                    "Rule '%s' condition %s: rspamd_score requires a numeric operator (got '%s') and will be skipped",
-                    name, i + 1, operator
+                    "Rule '%s' condition %s: %s requires a numeric operator (got '%s') and will be skipped",
+                    name, i + 1, field, operator
                 )
                 return None
             try:
                 float(value)
             except (ValueError, TypeError):
                 logger.warning(
-                    "Rule '%s' condition %s: rspamd_score value must be a number (got %r) and will be skipped",
-                    name, i + 1, value
+                    "Rule '%s' condition %s: %s value must be a number (got %r) and will be skipped",
+                    name, i + 1, field, value
                 )
                 return None
         else:
@@ -232,6 +235,7 @@ def _extract_fields(email):
     recipients = email.get("recipients", [])
     raw_headers = email.get("raw_headers", "")
     raw_attachments = email.get("attachments", [])
+    date_received = email.get("date_received", "")
 
     sender_parts = split_address(sender)
     recipient_parts = [split_address(r) for r in recipients]
@@ -244,6 +248,15 @@ def _extract_fields(email):
         for a in raw_attachments
     ]
 
+    email_age_days = None
+    if date_received:
+        try:
+            dt = datetime.strptime(date_received, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            delta = datetime.now(timezone.utc) - dt
+            email_age_days = delta.total_seconds() / 86400.0
+        except (ValueError, TypeError):
+            pass
+
     return {
         "sender": sender_parts["full"],
         "sender_local": sender_parts["local"],
@@ -255,6 +268,7 @@ def _extract_fields(email):
         "subject": subject.lower(),
         "raw_headers": raw_headers.lower(),
         "attachments": attachment_parts,
+        "email_age_days": email_age_days,
     }
 
 def _match_condition(condition, fields, rule_name):
@@ -288,6 +302,35 @@ def _match_condition(condition, fields, rule_name):
         logger.debug(
             "Rule '%s': condition field=rspamd_score operator=%s value=%s score=%.2f => %s",
             rule_name, operator, threshold, score_float, result
+        )
+        return result
+
+    if field == "email_age_days":
+        age = fields.get("email_age_days")
+        if age is None:
+            logger.debug(
+                "Rule '%s': email_age_days condition skipped, date not available",
+                rule_name
+            )
+            return False
+        try:
+            threshold = float(value)
+            age_float = float(age)
+        except (ValueError, TypeError):
+            return False
+        if operator == "greater_than":
+            result = age_float > threshold
+        elif operator == "less_than":
+            result = age_float < threshold
+        elif operator == "greater_than_or_equal":
+            result = age_float >= threshold
+        elif operator == "less_than_or_equal":
+            result = age_float <= threshold
+        else:
+            result = False
+        logger.debug(
+            "Rule '%s': condition field=email_age_days operator=%s value=%s age=%.2f => %s",
+            rule_name, operator, threshold, age_float, result
         )
         return result
 
