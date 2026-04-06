@@ -10,7 +10,7 @@ document.addEventListener("DOMContentLoaded", function() {
             var visibleCount = 0;
             cards.forEach(function(card) {
                 var text = card.dataset.ruleText || "";
-                var match = !query || text.indexOf(query) !== -1;
+                var match = !query || text.includes(query);
                 card.classList.toggle("d-none", !match);
                 if (match) visibleCount++;
             });

@@ -93,7 +93,7 @@
 {% set rule_text = [rule.name] %}
 {% for c in rule.conditions %}{% set _ = rule_text.append(c.field) %}{% set _ = rule_text.append(c.operator) %}{% set _ = rule_text.append(c.value) %}{% endfor %}
 {% for a in rule.actions %}{% set _ = rule_text.append(a.type) %}{% if a.destination %}{% set _ = rule_text.append(a.destination) %}{% endif %}{% endfor %}
-<div class="card mb-3 rule-card" data-rule-text="{{ rule_text | join(' ') | lower }}">
+<div class="card mb-3 rule-card" data-rule-text="{{ rule_text | join(' ') | lower | e }}">
     <div class="card-body">
         <div class="d-flex align-items-start justify-content-between gap-3 mb-3 flex-wrap">
             <div class="d-flex align-items-center gap-2 flex-wrap">
