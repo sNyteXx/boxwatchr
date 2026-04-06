@@ -51,7 +51,7 @@
 
             <div id="conditions-container">
                 {% for c in rule.conditions %}
-                {% set is_numeric = c.field == "rspamd_score" %}
+                {% set is_numeric = c.field in ("rspamd_score", "email_age_days") %}
                 <div class="condition-row d-flex gap-2 align-items-start mb-2 flex-wrap flex-sm-nowrap">
                     <select name="condition_field" class="form-select cond-field">
                         <optgroup label="Sender">
@@ -81,6 +81,7 @@
                         </optgroup>
                         <optgroup label="Spam Score">
                             <option value="rspamd_score" {% if c.field == "rspamd_score" %}selected{% endif %}>rspamd score</option>
+                            <option value="email_age_days" {% if c.field == "email_age_days" %}selected{% endif %}>email age (days)</option>
                         </optgroup>
                     </select>
                     <select name="condition_operator" class="form-select cond-operator">
@@ -192,6 +193,7 @@
             </optgroup>
             <optgroup label="Spam Score">
                 <option value="rspamd_score">rspamd score</option>
+                <option value="email_age_days">email age (days)</option>
             </optgroup>
         </select>
         <select name="condition_operator" class="form-select cond-operator">

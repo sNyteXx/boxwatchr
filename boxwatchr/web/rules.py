@@ -25,6 +25,7 @@ _FIELD_LABELS = {
     "attachment_extension": "Extension",
     "attachment_content_type": "Content type",
     "rspamd_score": "Spam score",
+    "email_age_days": "Email age (days)",
 }
 
 _ACTION_LABELS = {

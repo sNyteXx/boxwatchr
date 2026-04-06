@@ -6,7 +6,7 @@ function onFieldChange(select) {
     var operatorSelect = row.querySelector(".cond-operator");
     var textInput = row.querySelector(".value-text");
     var boolSelect = row.querySelector(".value-bool");
-    var isNumeric = select.value === "rspamd_score";
+    var isNumeric = select.value === "rspamd_score" || select.value === "email_age_days";
 
     operatorSelect.innerHTML = isNumeric ? NUMERIC_OPERATORS_HTML : TEXT_OPERATORS_HTML;
 

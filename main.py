@@ -161,6 +161,7 @@ def reprocess_pending_emails(client, current_uids):
             "recipients": [r for r in row["recipients"].split(",") if r] if row["recipients"] else [],
             "raw_headers": row["raw_headers"] or "",
             "attachments": stored_attachments,
+            "date_received": row["date_received"] or "",
         }
 
         matched_rule = rules.evaluate(email_data, spam_score=spam_score, email_id=email_id)
@@ -347,6 +348,7 @@ def process_email(client, uid, message, current_uids=None):
             "recipients": recipients,
             "raw_headers": raw_headers,
             "attachments": attachments,
+            "date_received": date_received,
         }
 
         logger.info("Processing email UID %s from %s", uid, sender, extra={"email_id": email_id})

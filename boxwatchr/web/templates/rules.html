@@ -11,6 +11,13 @@
     </div>
 </div>
 
+{% if rules %}
+<div class="mb-3">
+    <input type="search" id="rules-search" class="form-control form-control-sm" placeholder="Search rules by name, condition, or action…" autocomplete="off">
+</div>
+<p id="rules-search-empty" class="text-secondary small d-none">No rules match your search.</p>
+{% endif %}
+
 <div class="overlay d-none" id="export-overlay">
     <div class="card overlay-box overlay-box-lg">
         <div class="card-body">
@@ -83,7 +90,10 @@
 {% endif %}
 
 {% for rule in rules %}
-<div class="card mb-3">
+{% set rule_text = [rule.name] %}
+{% for c in rule.conditions %}{% set _ = rule_text.append(c.field) %}{% set _ = rule_text.append(c.operator) %}{% set _ = rule_text.append(c.value) %}{% endfor %}
+{% for a in rule.actions %}{% set _ = rule_text.append(a.type) %}{% if a.destination %}{% set _ = rule_text.append(a.destination) %}{% endif %}{% endfor %}
+<div class="card mb-3 rule-card" data-rule-text="{{ rule_text | join(' ') | lower }}">
     <div class="card-body">
         <div class="d-flex align-items-start justify-content-between gap-3 mb-3 flex-wrap">
             <div class="d-flex align-items-center gap-2 flex-wrap">
