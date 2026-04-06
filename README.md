@@ -1,4 +1,4 @@
-<p align="center"><img src="https://raw.githubusercontent.com/nulcraft/boxwatchr/refs/heads/main/images/logo/128px.png"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/sNyteXx/boxwatchr/refs/heads/main/images/logo/128px.png"></p>
 
 # > boxwatchr
 
@@ -76,10 +76,7 @@ docker run -d \
   -e PUID=1000 \
   -e PGID=1000 \
   -e TZ=America/New_York \
-  nulcraft/boxwatchr:latest
-```
-
-Replace `/path/to/config` and `/path/to/data` with the actual absolute paths on your server. Docker run does not support relative paths. The `-e` flags are optional. Skip them to use the defaults (PUID/PGID 1000, UTC timezone, random rspamd password).
+  snytexx/boxwatchr:latest Docker run does not support relative paths. The `-e` flags are optional. Skip them to use the defaults (PUID/PGID 1000, UTC timezone, random rspamd password).
 
 ### Option 2: Docker Compose
 
@@ -88,7 +85,7 @@ Create `docker-compose.yml` in your `boxwatchr` folder:
 ```yaml
 services:
   boxwatchr:
-    image: nulcraft/boxwatchr:latest
+    image: snytexx/boxwatchr:latest
     container_name: boxwatchr
     restart: on-failure
     ports:
@@ -148,7 +145,7 @@ uid=1000(youruser) gid=1000(youruser) groups=...
 
 If your platform manages containers through a GUI rather than docker-compose, skip the `.env` file entirely. Configure the container like this:
 
-**Image:** `ghcr.io/nulcraft/boxwatchr:latest`
+**Image:** `ghcr.io/snytexx/boxwatchr:latest`
 
 **Volumes:**
 | Container path | Purpose |

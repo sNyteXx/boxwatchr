@@ -11,7 +11,7 @@ _cache_value = None
 _cache_time = 0
 _CACHE_TTL = 3600
 
-_GITHUB_RELEASES_URL = "https://api.github.com/repos/nulcraft/boxwatchr/releases/latest"
+_GITHUB_RELEASES_URL = "https://api.github.com/repos/sNyteXx/boxwatchr/releases/latest"
 
 def _fetch_latest():
     global _cache_value, _cache_time

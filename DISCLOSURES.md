@@ -6,13 +6,13 @@ This file covers privacy, credential storage, AI assistance, third-party softwar
 
 ## Privacy and Data Handling
 
-boxwatchr runs entirely on your own infrastructure. It connects to services you configure (your IMAP server) and services bundled inside the container (rspamd, Redis, Unbound). It has no connection to any server operated by nulcraft.
+boxwatchr runs entirely on your own infrastructure. It connects to services you configure (your IMAP server) and services bundled inside the container (rspamd, Redis, Unbound). It has no connection to any server operated by sNyteXx.
 
 - No analytics, telemetry, usage tracking, or error reporting of any kind is collected.
-- nulcraft has no visibility into who is running boxwatchr, how it is configured, or what email it processes.
+- sNyteXx has no visibility into who is running boxwatchr, how it is configured, or what email it processes.
 - All data, including emails, processing logs, and configuration, stays on the host where the container runs.
 
-The only connection boxwatchr initiates to a server outside your own infrastructure is a periodic check against the GitHub Releases API to detect whether a newer version is available. This request goes to GitHub's servers, not nulcraft's, and is subject to [GitHub's Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement). No account data, email content, or identifying information is sent as part of this request. The version check can be disabled in the application config if you prefer boxwatchr to make no external connections beyond your own mail server.
+The only connection boxwatchr initiates to a server outside your own infrastructure is a periodic check against the GitHub Releases API to detect whether a newer version is available. This request goes to GitHub's servers, not sNyteXx's, and is subject to [GitHub's Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement). No account data, email content, or identifying information is sent as part of this request. The version check can be disabled in the application config if you prefer boxwatchr to make no external connections beyond your own mail server.
 
 ---
 
@@ -80,7 +80,7 @@ These services are installed into the Docker image at build time and run as back
 
 ## Security Vulnerabilities
 
-To report a security vulnerability, please use [GitHub's private security advisory feature](https://github.com/nulcraft/boxwatchr/security/advisories/new) rather than opening a public issue. This keeps the details private until a fix is available.
+To report a security vulnerability, please use [GitHub's private security advisory feature](https://github.com/sNyteXx/boxwatchr/security/advisories/new) rather than opening a public issue. This keeps the details private until a fix is available.
 
 ---
 
