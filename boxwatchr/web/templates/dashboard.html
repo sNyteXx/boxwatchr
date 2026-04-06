@@ -109,4 +109,85 @@
         </div>
     </div>
 </div>
+
+<h2 class="h5 fw-semibold mb-3 mt-5"><i class="bi bi-graph-up me-2"></i>Trends (Last 30 Days)</h2>
+
+<div class="row g-4 mb-4">
+    <div class="col-12 col-md-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="card-subtitle">Email Volume</h2>
+                <div style="position:relative;height:260px">
+                    <canvas id="chart-emails-per-day"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="card-subtitle">Spam Score Trend</h2>
+                <div style="position:relative;height:260px">
+                    <canvas id="chart-spam-trend"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-12 col-md-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="card-subtitle">Top Senders</h2>
+                <div style="position:relative;height:300px">
+                    <canvas id="chart-top-senders"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="card-subtitle">Top Domains</h2>
+                <div style="position:relative;height:300px">
+                    <canvas id="chart-top-domains"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-12">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="card-subtitle">Rules Over Time</h2>
+                <div style="position:relative;height:300px">
+                    <canvas id="chart-rules-over-time"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <h2 class="card-subtitle">Export</h2>
+                <div class="d-flex flex-wrap gap-2 mt-2">
+                    <a href="/api/export/emails?format=csv" class="btn btn-sm btn-outline-light"><i class="bi bi-filetype-csv me-1"></i>Emails CSV</a>
+                    <a href="/api/export/emails?format=json" class="btn btn-sm btn-outline-light"><i class="bi bi-filetype-json me-1"></i>Emails JSON</a>
+                    <a href="/api/export/logs?format=csv" class="btn btn-sm btn-outline-light"><i class="bi bi-filetype-csv me-1"></i>Logs CSV</a>
+                    <a href="/api/export/logs?format=json" class="btn btn-sm btn-outline-light"><i class="bi bi-filetype-json me-1"></i>Logs JSON</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='scripts/dashboard.js') }}"></script>
 {% endblock %}
