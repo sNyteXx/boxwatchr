@@ -36,6 +36,7 @@ _ACTION_LABELS = {
     "unflag": "Mark as unflagged",
     "learn_spam": "Submit to rspamd as spam",
     "learn_ham": "Submit to rspamd as ham",
+    "notify_discord": "Send Discord notification",
 }
 
 

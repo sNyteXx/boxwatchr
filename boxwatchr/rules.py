@@ -76,7 +76,7 @@ def validate_rule(rule):
 
     _NUMERIC_FIELDS = {"rspamd_score", "email_age_days"}
 
-    valid_actions = {"move", "mark_read", "mark_unread", "flag", "unflag", "learn_spam", "learn_ham"}
+    valid_actions = {"move", "mark_read", "mark_unread", "flag", "unflag", "learn_spam", "learn_ham", "notify_discord"}
     contradictory_pairs = [{"mark_read", "mark_unread"}, {"flag", "unflag"}, {"learn_spam", "learn_ham"}]
 
     validated_conditions = []
@@ -155,6 +155,18 @@ def validate_rule(rule):
                 logger.warning("Rule '%s' action %s is a move but has no destination and will be skipped", name, i + 1)
                 continue
             validated_actions.append({"type": "move", "destination": destination})
+            continue
+
+        if action_type == "notify_discord":
+            webhook_url = action.get("webhook_url", "").strip()
+            if not webhook_url:
+                logger.warning("Rule '%s' action %s is notify_discord but has no webhook_url and will be skipped", name, i + 1)
+                continue
+            if not (webhook_url.startswith("https://discord.com/api/webhooks/") or
+                    webhook_url.startswith("https://discordapp.com/api/webhooks/")):
+                logger.warning("Rule '%s' action %s has an invalid Discord webhook URL and will be skipped", name, i + 1)
+                continue
+            validated_actions.append({"type": "notify_discord", "webhook_url": webhook_url})
             continue
 
         validated_actions.append({"type": action_type})

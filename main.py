@@ -11,6 +11,7 @@ from boxwatchr.imap import FatalImapError
 from boxwatchr.notes import action_sentence, failed_action_sentence, skipped_learn_sentence, build_notes_opener
 from boxwatchr.database import set_processing, clear_email_id_from_logs, enqueue_email, enqueue_email_update, get_known_uids, get_unprocessed_emails, get_email_by_content_hash, update_email_uid, compute_content_hash
 from boxwatchr.rules import TERMINAL_ACTIONS
+from boxwatchr.notifications import send_discord_notification
 from boxwatchr.logger import get_logger
 
 logger = get_logger("boxwatchr.main")
@@ -201,6 +202,9 @@ def reprocess_pending_emails(client, current_uids):
                     )
                 executed.append((action, "skipped"))
                 continue
+            if action_type == "notify_discord":
+                executed.append((action, "skipped"))
+                continue
             logger.info(
                 "Reprocessing pending email UID %s: action=%s, destination=%s, rule=%s",
                 uid, action_type, action.get("destination") or "none", rule_name,
@@ -372,8 +376,9 @@ def process_email(client, uid, message, current_uids=None):
             extra={"email_id": email_id}
         )
 
-        imap_actions = [a for a in actions if a["type"] not in {"learn_spam", "learn_ham"}]
+        imap_actions = [a for a in actions if a["type"] not in {"learn_spam", "learn_ham", "notify_discord"}]
         learn_actions = [a for a in actions if a["type"] in {"learn_spam", "learn_ham"}]
+        discord_actions = [a for a in actions if a["type"] == "notify_discord"]
 
         for action in imap_actions:
             action_type = action["type"]
@@ -412,11 +417,32 @@ def process_email(client, uid, message, current_uids=None):
                     if ok:
                         rspamd_learned = "ham"
 
+        discord_sent = False
+        for action in discord_actions:
+            webhook_url = action.get("webhook_url", "")
+            if config.DRYRUN:
+                logger.debug(
+                    "DRYRUN: would send Discord notification for UID %s",
+                    uid, extra={"email_id": email_id}
+                )
+            else:
+                ok = send_discord_notification(
+                    webhook_url, email_data, rule_name,
+                    spam_score=spam_score, email_id=email_id
+                )
+                if ok:
+                    discord_sent = True
+
         notes_parts = [build_notes_opener(matched_rule, config.DRYRUN)]
         if actions:
             for action in actions:
                 if action["type"] in {"learn_spam", "learn_ham"}:
                     if config.DRYRUN or rspamd_learned is not None:
+                        notes_parts.append(action_sentence(action, config.DRYRUN))
+                    else:
+                        notes_parts.append(failed_action_sentence(action))
+                elif action["type"] == "notify_discord":
+                    if config.DRYRUN or discord_sent:
                         notes_parts.append(action_sentence(action, config.DRYRUN))
                     else:
                         notes_parts.append(failed_action_sentence(action))
@@ -431,7 +457,7 @@ def process_email(client, uid, message, current_uids=None):
         history = []
         if not config.DRYRUN:
             for a in actions:
-                if a["type"] in {"learn_spam", "learn_ham"}:
+                if a["type"] in {"learn_spam", "learn_ham", "notify_discord"}:
                     continue
                 entry = {"at": processed_at, "by": "boxwatchr", "action": a["type"]}
                 if "destination" in a:

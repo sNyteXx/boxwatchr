@@ -34,9 +34,15 @@ function onOperatorChange(select) {
 function onActionTypeChange(select) {
     var row = select.closest(".action-row");
     var destInput = row.querySelector(".action-dest");
+    var webhookInput = row.querySelector(".action-webhook");
     var isMove = select.value === "move";
+    var isDiscord = select.value === "notify_discord";
     destInput.classList.toggle("d-none", !isMove);
     destInput.disabled = !isMove;
+    if (webhookInput) {
+        webhookInput.classList.toggle("d-none", !isDiscord);
+        webhookInput.disabled = !isDiscord;
+    }
 }
 
 function removeCondition(btn) {

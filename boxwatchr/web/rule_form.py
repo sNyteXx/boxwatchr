@@ -3,6 +3,7 @@ import sqlite3
 from datetime import datetime, timezone
 from flask import render_template, request, redirect, url_for, abort, flash
 from boxwatchr import config, imap, spam
+from boxwatchr.notifications import send_discord_notification
 from boxwatchr.database import db_connection, get_rule, insert_rule, update_rule, enqueue_email_update
 from boxwatchr.notes import action_sentence
 from boxwatchr.rules import validate_rule, check_rule, load_rules, TERMINAL_ACTIONS
@@ -16,6 +17,7 @@ def _parse_rule_form(form):
     condition_values = form.getlist("condition_value")
     action_types = form.getlist("action_type")
     action_destinations = form.getlist("action_destination")
+    action_webhook_urls = form.getlist("action_webhook_url")
 
     conditions = []
     for field, operator, value in zip(condition_fields, condition_operators, condition_values):
@@ -24,6 +26,7 @@ def _parse_rule_form(form):
 
     actions = []
     dest_idx = 0
+    webhook_idx = 0
     for action_type in action_types:
         if not action_type:
             continue
@@ -31,6 +34,9 @@ def _parse_rule_form(form):
         if action_type == "move":
             action["destination"] = action_destinations[dest_idx] if dest_idx < len(action_destinations) else ""
             dest_idx += 1
+        if action_type == "notify_discord":
+            action["webhook_url"] = action_webhook_urls[webhook_idx] if webhook_idx < len(action_webhook_urls) else ""
+            webhook_idx += 1
         actions.append(action)
 
     return {
@@ -273,6 +279,25 @@ def rule_run(rule_id):
                             executed.append(action)
                         continue
 
+                    if action_type == "notify_discord":
+                        webhook_url = action.get("webhook_url", "")
+                        if not config.DRYRUN:
+                            ok = send_discord_notification(
+                                webhook_url, email_data, rule["name"],
+                                spam_score=email_row["spam_score"], email_id=email_id
+                            )
+                            if ok:
+                                actioned += 1
+                                executed.append(action)
+                            else:
+                                logger.warning(
+                                    "Rule run: Discord notification failed for UID %s",
+                                    uid, extra={"email_id": email_id}
+                                )
+                        else:
+                            executed.append(action)
+                        continue
+
                     try:
                         imap.execute_action(client, action, uid, email_id=email_id)
                         executed.append(action)
@@ -301,7 +326,7 @@ def rule_run(rule_id):
                         dict({"at": processed_at, "by": "boxwatchr", "action": a["type"]},
                              **{"destination": a["destination"]} if "destination" in a else {})
                         for a in executed
-                        if a["type"] not in {"learn_spam", "learn_ham"}
+                        if a["type"] not in {"learn_spam", "learn_ham", "notify_discord"}
                     ]
                 enqueue_email_update(
                     email_id,
