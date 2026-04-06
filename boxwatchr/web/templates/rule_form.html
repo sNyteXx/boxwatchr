@@ -163,10 +163,43 @@
 
     <div class="d-flex gap-2">
         <button type="submit" class="btn btn-primary">Save Rule</button>
+        <button type="button" class="btn btn-outline-secondary" id="simulate-btn">Simulate</button>
         <a href="/rules" class="btn btn-outline-secondary">Cancel</a>
     </div>
 
 </form>
+
+<div class="overlay d-none" id="simulate-overlay">
+    <div class="card overlay-box overlay-box-lg">
+        <div class="card-body">
+            <p class="section-label mb-3">Simulation Results</p>
+            <div id="simulate-loading" class="text-center py-4">
+                <p class="text-secondary small">Running simulation against all logged emails…</p>
+            </div>
+            <div id="simulate-results" class="d-none">
+                <div class="d-flex gap-4 mb-3">
+                    <div>
+                        <span class="text-secondary small">Tested</span>
+                        <div class="fw-bold" id="sim-total">0</div>
+                    </div>
+                    <div>
+                        <span class="text-secondary small">Matched</span>
+                        <div class="fw-bold score-high" id="sim-matched">0</div>
+                    </div>
+                    <div>
+                        <span class="text-secondary small">Match Rate</span>
+                        <div class="fw-bold" id="sim-rate">0%</div>
+                    </div>
+                </div>
+                <div id="sim-preview" class="table-responsive" style="max-height:300px;overflow-y:auto"></div>
+            </div>
+            <div id="simulate-error" class="d-none text-danger small"></div>
+            <div class="d-flex justify-content-end mt-3">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="simulate-close">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <template id="condition-template">
     <div class="condition-row d-flex gap-2 align-items-start mb-2 flex-wrap flex-sm-nowrap">

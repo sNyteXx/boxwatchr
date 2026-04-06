@@ -356,3 +356,55 @@ def rule_run(rule_id):
         logger.info("Rule '%s' run manually: %s matched, %s action(s) taken", rule["name"], matched, actioned)
         flash("Rule '%s' ran: %s email(s) matched, %s action(s) taken." % (rule["name"], matched, actioned), "success")
     return redirect(url_for("rules_list"))
+
+
+@app.route("/api/rules/simulate", methods=["POST"])
+@_require_auth
+@_require_csrf
+def rule_simulate():
+    import json as _json
+
+    data = request.get_json(silent=True)
+    if not data:
+        return _json.dumps({"error": "Invalid JSON"}), 400, {"Content-Type": "application/json"}
+
+    rule = validate_rule(data)
+    if rule is None:
+        return _json.dumps({"error": "Invalid rule definition"}), 400, {"Content-Type": "application/json"}
+
+    try:
+        with db_connection() as conn:
+            rows = conn.execute(
+                "SELECT id, sender, recipients, subject, date_received,"
+                " spam_score, raw_headers, attachments"
+                " FROM emails ORDER BY date_received DESC"
+            ).fetchall()
+    except Exception as e:
+        logger.error("Simulation query failed: %s", e)
+        return _json.dumps({"error": "Database error"}), 500, {"Content-Type": "application/json"}
+
+    matched_emails = []
+    for row in rows:
+        email_data = {
+            "sender": row["sender"] or "",
+            "subject": row["subject"] or "",
+            "recipients": [r for r in (row["recipients"] or "").split(",") if r],
+            "raw_headers": row["raw_headers"] or "",
+            "attachments": _json.loads(row["attachments"] or "[]"),
+            "date_received": row["date_received"] or "",
+        }
+        if check_rule(rule, email_data, spam_score=row["spam_score"]):
+            matched_emails.append({
+                "id": row["id"],
+                "sender": row["sender"],
+                "subject": row["subject"],
+                "date_received": row["date_received"],
+                "spam_score": row["spam_score"],
+            })
+
+    preview = matched_emails[:50]
+    return _json.dumps({
+        "total_emails": len(rows),
+        "matched": len(matched_emails),
+        "matched_emails": preview,
+    }), 200, {"Content-Type": "application/json"}
