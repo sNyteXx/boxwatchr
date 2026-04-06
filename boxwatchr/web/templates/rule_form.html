@@ -79,8 +79,10 @@
                             <option value="attachment_extension" {% if c.field == "attachment_extension" %}selected{% endif %}>Attachment — extension</option>
                             <option value="attachment_content_type" {% if c.field == "attachment_content_type" %}selected{% endif %}>Attachment — content type</option>
                         </optgroup>
-                        <optgroup label="Spam Score">
+                        <optgroup label="Spam">
                             <option value="rspamd_score" {% if c.field == "rspamd_score" %}selected{% endif %}>rspamd score</option>
+                        </optgroup>
+                        <optgroup label="Time">
                             <option value="email_age_days" {% if c.field == "email_age_days" %}selected{% endif %}>email age (days)</option>
                         </optgroup>
                     </select>
@@ -194,8 +196,10 @@
                 <option value="attachment_extension">Attachment — extension</option>
                 <option value="attachment_content_type">Attachment — content type</option>
             </optgroup>
-            <optgroup label="Spam Score">
+            <optgroup label="Spam">
                 <option value="rspamd_score">rspamd score</option>
+            </optgroup>
+            <optgroup label="Time">
                 <option value="email_age_days">email age (days)</option>
             </optgroup>
         </select>
