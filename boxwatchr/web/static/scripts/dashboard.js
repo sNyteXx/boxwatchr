@@ -177,6 +177,57 @@
       });
   }
 
+  function loadFolders() {
+    fetch("/api/stats/folders")
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        var loading = document.getElementById("folder-loading");
+        var list = document.getElementById("folder-list");
+        var empty = document.getElementById("folder-empty");
+
+        if (!data || !data.folders || data.folders.length === 0) {
+          if (loading) loading.classList.add("d-none");
+          if (empty) empty.classList.remove("d-none");
+          return;
+        }
+
+        var tbody = document.getElementById("folder-tbody");
+        data.folders.forEach(function (f) {
+          var tr = document.createElement("tr");
+          var nameCell = document.createElement("td");
+          nameCell.textContent = f.name;
+          if (f.is_watched) {
+            var badge = document.createElement("span");
+            badge.className = "badge text-bg-primary ms-2";
+            badge.textContent = "watched";
+            nameCell.appendChild(badge);
+          }
+          var countCell = document.createElement("td");
+          countCell.textContent = f.email_count;
+          var linkCell = document.createElement("td");
+          if (f.email_count > 0) {
+            var a = document.createElement("a");
+            a.href = "/emails?folder=" + encodeURIComponent(f.name);
+            a.className = "small";
+            a.textContent = "View emails \u2192";
+            linkCell.appendChild(a);
+          }
+          tr.appendChild(nameCell);
+          tr.appendChild(countCell);
+          tr.appendChild(linkCell);
+          tbody.appendChild(tr);
+        });
+
+        if (loading) loading.classList.add("d-none");
+        list.classList.remove("d-none");
+      })
+      .catch(function () {
+        var loading = document.getElementById("folder-loading");
+        if (loading) loading.textContent = "Failed to load folders.";
+      });
+  }
+
   loadTimeline();
   loadTopSenders();
+  loadFolders();
 })();

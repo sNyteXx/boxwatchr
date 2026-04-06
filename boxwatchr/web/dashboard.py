@@ -162,6 +162,46 @@ def api_stats_top_senders():
         return jsonify({"error": "Database error"}), 500
 
 
+@app.route("/api/stats/folders")
+@_require_auth
+def api_folder_stats():
+    from boxwatchr import imap as _imap
+
+    folders = _imap.get_folder_list() if config.SETUP_COMPLETE else []
+
+    folder_counts = {}
+    try:
+        with db_connection() as conn:
+            rows = conn.execute(
+                "SELECT folder, COUNT(*) AS cnt FROM emails"
+                " WHERE account_id = ? GROUP BY folder",
+                (config.ACCOUNT_ID,),
+            ).fetchall()
+            for row in rows:
+                folder_counts[row["folder"]] = row["cnt"]
+    except sqlite3.Error as e:
+        logger.error("Failed to query folder stats: %s", e)
+
+    result = []
+    for folder in folders:
+        result.append({
+            "name": folder,
+            "email_count": folder_counts.get(folder, 0),
+            "is_watched": folder == config.IMAP_FOLDER,
+        })
+
+    known_folders = set(folders)
+    for folder_name, count in folder_counts.items():
+        if folder_name not in known_folders:
+            result.append({
+                "name": folder_name,
+                "email_count": count,
+                "is_watched": folder_name == config.IMAP_FOLDER,
+            })
+
+    return json.dumps({"folders": result}), 200, {"Content-Type": "application/json"}
+
+
 @app.route("/api/export/emails")
 @_require_auth
 def api_export_emails():
