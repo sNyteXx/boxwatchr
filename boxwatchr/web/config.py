@@ -28,6 +28,7 @@ def config_page():
         has_password=bool(config.WEB_PASSWORD),
         tls_mode=config.IMAP_TLS_MODE,
         show_logout=bool(config.WEB_PASSWORD),
+        theme=config.THEME,
     )
 
 @app.route("/config", methods=["POST"])

@@ -13,20 +13,36 @@ def emails():
     except ValueError:
         page = 1
 
+    folder = request.args.get("folder", "").strip()
+
     offset = (page - 1) * _EMAILS_PAGE_SIZE
     try:
         with db_connection() as conn:
-            total = conn.execute("SELECT COUNT(*) FROM emails").fetchone()[0]
-            rows = conn.execute(
-                """SELECT id, sender, subject, date_received, spam_score,
-                          processed_notes, processed, rule_matched
-                   FROM emails
-                   ORDER BY date_received DESC
-                   LIMIT ? OFFSET ?""",
-                (_EMAILS_PAGE_SIZE, offset)
-            ).fetchall()
+            if folder:
+                total = conn.execute(
+                    "SELECT COUNT(*) FROM emails WHERE folder = ?", (folder,)
+                ).fetchone()[0]
+                rows = conn.execute(
+                    """SELECT id, sender, subject, date_received, spam_score,
+                              processed_notes, processed, rule_matched
+                       FROM emails
+                       WHERE folder = ?
+                       ORDER BY date_received DESC
+                       LIMIT ? OFFSET ?""",
+                    (folder, _EMAILS_PAGE_SIZE, offset),
+                ).fetchall()
+            else:
+                total = conn.execute("SELECT COUNT(*) FROM emails").fetchone()[0]
+                rows = conn.execute(
+                    """SELECT id, sender, subject, date_received, spam_score,
+                              processed_notes, processed, rule_matched
+                       FROM emails
+                       ORDER BY date_received DESC
+                       LIMIT ? OFFSET ?""",
+                    (_EMAILS_PAGE_SIZE, offset),
+                ).fetchall()
     except sqlite3.Error as e:
-        logger.error("Failed to query emails (page=%s): %s", page, e)
+        logger.error("Failed to query emails (page=%s, folder=%s): %s", page, folder, e)
         raise
 
     total_pages = max(1, (total + _EMAILS_PAGE_SIZE - 1) // _EMAILS_PAGE_SIZE)
@@ -57,5 +73,6 @@ def emails():
         page=page,
         total_pages=total_pages,
         total=total,
+        folder=folder,
         show_logout=bool(config.WEB_PASSWORD),
     )

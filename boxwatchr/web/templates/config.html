@@ -92,6 +92,13 @@
                     </select>
                 </div>
                 <div class="col-12 col-md-4">
+                    <label class="form-label">Theme</label>
+                    <select name="theme" class="form-select">
+                        <option value="default" {% if theme == "default" %}selected{% endif %}>Default</option>
+                        <option value="futuristic" {% if theme == "futuristic" %}selected{% endif %}>Futuristic</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-4">
                     <label class="form-label">Check for Updates</label>
                     <select name="check_for_updates" class="form-select">
                         <option value="true" {% if check_for_updates %}selected{% endif %}>Enabled</option>

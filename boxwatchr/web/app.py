@@ -167,6 +167,10 @@ def _save_app_config(form):
     dry_run = form.get("dry_run") == "true"
     check_for_updates = form.get("check_for_updates") != "false"
 
+    theme = form.get("theme", "default").strip()
+    if theme not in ("default", "futuristic"):
+        theme = "default"
+
     disable_password = form.get("disable_password") == "1"
     new_web_password_raw = form.get("web_password", "")
     if disable_password:
@@ -182,6 +186,7 @@ def _save_app_config(form):
         "web_password": web_password_stored,
         "db_prune_days": str(db_prune_days),
         "check_for_updates": "true" if check_for_updates else "false",
+        "theme": theme,
     })
 
     return web_password_stored
@@ -191,7 +196,7 @@ app.jinja_env.filters["localtime"] = _utc_to_local
 
 @app.context_processor
 def _inject_globals():
-    return {"dry_run": config.DRYRUN, "app_version": APP_VERSION}
+    return {"dry_run": config.DRYRUN, "app_version": APP_VERSION, "theme": config.THEME}
 
 @app.route("/")
 def index():

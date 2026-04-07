@@ -79,8 +79,10 @@
                             <option value="attachment_extension" {% if c.field == "attachment_extension" %}selected{% endif %}>Attachment — extension</option>
                             <option value="attachment_content_type" {% if c.field == "attachment_content_type" %}selected{% endif %}>Attachment — content type</option>
                         </optgroup>
-                        <optgroup label="Spam Score">
+                        <optgroup label="Spam">
                             <option value="rspamd_score" {% if c.field == "rspamd_score" %}selected{% endif %}>rspamd score</option>
+                        </optgroup>
+                        <optgroup label="Time">
                             <option value="email_age_days" {% if c.field == "email_age_days" %}selected{% endif %}>email age (days)</option>
                         </optgroup>
                     </select>
@@ -130,6 +132,7 @@
                         <option value="unflag" {% if a.type == "unflag" %}selected{% endif %}>Mark as unflagged</option>
                         <option value="learn_spam" {% if a.type == "learn_spam" %}selected{% endif %}>Submit to rspamd as spam</option>
                         <option value="learn_ham" {% if a.type == "learn_ham" %}selected{% endif %}>Submit to rspamd as ham</option>
+                        <option value="notify_discord" {% if a.type == "notify_discord" %}selected{% endif %}>Send Discord notification</option>
                     </select>
                     {% if folders %}
                     <select name="action_destination" class="form-select action-dest flex-grow-1{% if a.type != 'move' %} d-none{% endif %}"{% if a.type != 'move' %} disabled{% endif %}>
@@ -143,6 +146,8 @@
                     </select>
                     {% else %}
                     <input name="action_destination" type="text" class="form-control action-dest flex-grow-1{% if a.type != 'move' %} d-none{% endif %}" placeholder="Folder (e.g. INBOX.Newsletters)" value="{{ a.destination if a.type == 'move' else '' }}"{% if a.type != 'move' %} disabled{% endif %}>
+                    {% endif %}
+                    <input name="action_webhook_url" type="text" class="form-control action-webhook flex-grow-1{% if a.type != 'notify_discord' %} d-none{% endif %}" placeholder="Discord webhook URL" value="{{ a.webhook_url if a.type == 'notify_discord' else '' }}"{% if a.type != 'notify_discord' %} disabled{% endif %}>
                     {% endif %}
                     <button type="button" class="btn btn-outline-danger flex-shrink-0" data-action="remove-action">&times;</button>
                 </div>
@@ -158,10 +163,43 @@
 
     <div class="d-flex gap-2">
         <button type="submit" class="btn btn-primary">Save Rule</button>
+        <button type="button" class="btn btn-outline-secondary" id="simulate-btn">Simulate</button>
         <a href="/rules" class="btn btn-outline-secondary">Cancel</a>
     </div>
 
 </form>
+
+<div class="overlay d-none" id="simulate-overlay">
+    <div class="card overlay-box overlay-box-lg">
+        <div class="card-body">
+            <p class="section-label mb-3">Simulation Results</p>
+            <div id="simulate-loading" class="text-center py-4">
+                <p class="text-secondary small">Running simulation against all logged emails…</p>
+            </div>
+            <div id="simulate-results" class="d-none">
+                <div class="d-flex gap-4 mb-3">
+                    <div>
+                        <span class="text-secondary small">Tested</span>
+                        <div class="fw-bold" id="sim-total">0</div>
+                    </div>
+                    <div>
+                        <span class="text-secondary small">Matched</span>
+                        <div class="fw-bold score-high" id="sim-matched">0</div>
+                    </div>
+                    <div>
+                        <span class="text-secondary small">Match Rate</span>
+                        <div class="fw-bold" id="sim-rate">0%</div>
+                    </div>
+                </div>
+                <div id="sim-preview" class="table-responsive" style="max-height:300px;overflow-y:auto"></div>
+            </div>
+            <div id="simulate-error" class="d-none text-danger small"></div>
+            <div class="d-flex justify-content-end mt-3">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="simulate-close">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <template id="condition-template">
     <div class="condition-row d-flex gap-2 align-items-start mb-2 flex-wrap flex-sm-nowrap">
@@ -191,8 +229,10 @@
                 <option value="attachment_extension">Attachment — extension</option>
                 <option value="attachment_content_type">Attachment — content type</option>
             </optgroup>
-            <optgroup label="Spam Score">
+            <optgroup label="Spam">
                 <option value="rspamd_score">rspamd score</option>
+            </optgroup>
+            <optgroup label="Time">
                 <option value="email_age_days">email age (days)</option>
             </optgroup>
         </select>
@@ -222,6 +262,7 @@
             <option value="unflag">Mark as unflagged</option>
             <option value="learn_spam">Submit to rspamd as spam</option>
             <option value="learn_ham">Submit to rspamd as ham</option>
+            <option value="notify_discord">Send Discord notification</option>
         </select>
         {% if folders %}
         <select name="action_destination" class="form-select action-dest flex-grow-1 d-none" disabled>
@@ -233,6 +274,7 @@
         {% else %}
         <input name="action_destination" type="text" class="form-control action-dest flex-grow-1 d-none" placeholder="Folder (e.g. INBOX.Newsletters)" disabled>
         {% endif %}
+        <input name="action_webhook_url" type="text" class="form-control action-webhook flex-grow-1 d-none" placeholder="Discord webhook URL" disabled>
         <button type="button" class="btn btn-outline-danger flex-shrink-0" data-action="remove-action">&times;</button>
     </div>
 </template>

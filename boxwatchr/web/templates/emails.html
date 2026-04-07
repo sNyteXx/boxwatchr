@@ -7,6 +7,13 @@
     <span class="text-secondary small">{{ total }} total</span>
 </div>
 
+{% if folder %}
+<div class="mb-3">
+    <span class="badge text-bg-secondary">Folder: {{ folder }}</span>
+    <a href="/emails" class="small ms-2">Clear filter</a>
+</div>
+{% endif %}
+
 {% for email in emails %}
 <div class="card mb-2{% if email.rule_name %} card-rule{% endif %}">
     <div class="card-body py-3">
@@ -43,13 +50,13 @@
 <nav class="mt-3">
     <ul class="pagination pagination-sm mb-0">
         <li class="page-item {% if page == 1 %}disabled{% endif %}">
-            <a class="page-link" href="?page={{ page - 1 }}">&larr; Prev</a>
+            <a class="page-link" href="?page={{ page - 1 }}{% if folder %}&amp;folder={{ folder }}{% endif %}">&larr; Prev</a>
         </li>
         <li class="page-item disabled">
             <span class="page-link">Page {{ page }} of {{ total_pages }}</span>
         </li>
         <li class="page-item {% if page == total_pages %}disabled{% endif %}">
-            <a class="page-link" href="?page={{ page + 1 }}">Next &rarr;</a>
+            <a class="page-link" href="?page={{ page + 1 }}{% if folder %}&amp;folder={{ folder }}{% endif %}">Next &rarr;</a>
         </li>
     </ul>
 </nav>
