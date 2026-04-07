@@ -14,7 +14,7 @@ _rules_lock = threading.Lock()
 
 TERMINAL_ACTIONS = {"move"}
 
-_TEXT_OPERATORS = {"equals", "not_equals", "contains", "not_contains", "is_empty"}
+_TEXT_OPERATORS = {"equals", "not_equals", "contains", "not_contains", "is_empty", "matches_regex"}
 _NUMERIC_OPERATORS = {"greater_than", "less_than", "greater_than_or_equal", "less_than_or_equal"}
 
 def load_rules(account_id=None):
@@ -35,10 +35,18 @@ def load_rules(account_id=None):
             "conditions": json.loads(row["conditions"] or "[]"),
             "actions": json.loads(row["actions"] or "[]"),
         }
+        if "condition_groups" in row.keys():
+            rule_dict["condition_groups"] = json.loads(row["condition_groups"] or "[]")
+        if "enabled" in row.keys():
+            rule_dict["enabled"] = bool(row["enabled"])
         result = validate_rule(rule_dict)
         if result:
             result["id"] = row["id"]
-            validated.append(result)
+            result["enabled"] = bool(row["enabled"]) if "enabled" in row.keys() else True
+            if result["enabled"]:
+                validated.append(result)
+            else:
+                logger.debug("Rule '%s' is disabled, skipping", result["name"])
 
     with _rules_lock:
         _rules = validated
@@ -52,8 +60,9 @@ def validate_rule(rule):
         return None
 
     if "conditions" not in rule or not rule["conditions"]:
-        logger.warning("Rule '%s' has no conditions and will be skipped", name)
-        return None
+        if "condition_groups" not in rule or not rule["condition_groups"]:
+            logger.warning("Rule '%s' has no conditions and will be skipped", name)
+            return None
 
     if "actions" not in rule or not rule["actions"]:
         logger.warning("Rule '%s' has no actions and will be skipped", name)
@@ -76,11 +85,11 @@ def validate_rule(rule):
 
     _NUMERIC_FIELDS = {"rspamd_score", "email_age_days"}
 
-    valid_actions = {"move", "mark_read", "mark_unread", "flag", "unflag", "learn_spam", "learn_ham", "notify_discord"}
+    valid_actions = {"move", "mark_read", "mark_unread", "flag", "unflag", "learn_spam", "learn_ham", "notify_discord", "add_label"}
     contradictory_pairs = [{"mark_read", "mark_unread"}, {"flag", "unflag"}, {"learn_spam", "learn_ham"}]
 
     validated_conditions = []
-    for i, condition in enumerate(rule["conditions"]):
+    for i, condition in enumerate(rule.get("conditions", [])):
         field = condition.get("field", "").strip()
         operator = condition.get("operator", "").strip()
         value = condition.get("value", "")
@@ -131,6 +140,16 @@ def validate_rule(rule):
                 )
                 return None
 
+            if operator == "matches_regex":
+                try:
+                    re.compile(value)
+                except re.error:
+                    logger.warning(
+                        "Rule '%s' condition %s has invalid regex %r and will be skipped",
+                        name, i + 1, value
+                    )
+                    return None
+
         validated_conditions.append({
             "field": field,
             "operator": operator,
@@ -169,6 +188,14 @@ def validate_rule(rule):
             validated_actions.append({"type": "notify_discord", "webhook_url": webhook_url})
             continue
 
+        if action_type == "add_label":
+            label = action.get("label", "").strip()
+            if not label:
+                logger.warning("Rule '%s' action %s is add_label but has no label and will be skipped", name, i + 1)
+                continue
+            validated_actions.append({"type": "add_label", "label": label})
+            continue
+
         validated_actions.append({"type": action_type})
 
     if not validated_actions:
@@ -200,12 +227,62 @@ def validate_rule(rule):
             )
             return None
 
-    return {
+    # Validate condition_groups if present
+    validated_groups = []
+    if "condition_groups" in rule and rule["condition_groups"]:
+        for gi, group in enumerate(rule["condition_groups"]):
+            group_match = group.get("match", "all").lower().strip()
+            if group_match not in ("all", "any"):
+                group_match = "all"
+            group_conditions = group.get("conditions", [])
+            validated_group_conds = []
+            for i, condition in enumerate(group_conditions):
+                field = condition.get("field", "").strip()
+                operator = condition.get("operator", "").strip()
+                value = condition.get("value", "")
+
+                if not field or not operator:
+                    continue
+                if field not in valid_fields:
+                    continue
+                if field in _NUMERIC_FIELDS:
+                    if operator not in _NUMERIC_OPERATORS:
+                        continue
+                    try:
+                        float(value)
+                    except (ValueError, TypeError):
+                        continue
+                else:
+                    if operator not in _TEXT_OPERATORS:
+                        continue
+                    if operator == "matches_regex":
+                        try:
+                            re.compile(value)
+                        except re.error:
+                            continue
+                    elif value == "" or value is None:
+                        if operator != "is_empty":
+                            continue
+                    if operator == "is_empty" and str(value).lower() not in ("true", "false"):
+                        continue
+                validated_group_conds.append({"field": field, "operator": operator, "value": str(value)})
+
+            if validated_group_conds:
+                validated_groups.append({
+                    "match": group_match,
+                    "conditions": validated_group_conds
+                })
+
+    result = {
         "name": name,
         "match": match,
         "conditions": validated_conditions,
-        "actions": validated_actions
+        "actions": validated_actions,
+        "enabled": rule.get("enabled", True),
     }
+    if validated_groups:
+        result["condition_groups"] = validated_groups
+    return result
 
 def _extract_fields(email):
     def strip_display_name(address):
@@ -402,6 +479,13 @@ def _apply_operator(operator, field_value, value, field_name, rule_name):
         is_empty = field_value == ""
         return is_empty if value == "true" else not is_empty
 
+    if operator == "matches_regex":
+        try:
+            return bool(re.search(value, field_value, re.IGNORECASE))
+        except re.error:
+            logger.warning("Invalid regex %r in rule '%s' field %s", value, rule_name, field_name)
+            return False
+
     normalized_fields = {
         "sender_local", "sender_domain_name", "sender_domain_root",
         "recipient_local", "recipient_domain_name", "recipient_domain_root"
@@ -447,10 +531,30 @@ def _apply_operator(operator, field_value, value, field_name, rule_name):
     logger.warning("Unknown operator %r in rule '%s' field %s — condition will not match", operator, rule_name, field_name)
     return False
 
+def _match_condition_group(group, fields, rule_name):
+    """Evaluate a single condition group."""
+    conditions = group.get("conditions", [])
+    if not conditions:
+        return True
+    results = [_match_condition(c, fields, rule_name) for c in conditions]
+    group_match = group.get("match", "all")
+    if group_match == "any":
+        return any(results)
+    return all(results)
+
 def check_rule(rule, email_data, spam_score=None, email_id=None):
     extra = {"email_id": email_id}
     fields = _extract_fields(email_data)
     fields["rspamd_score"] = spam_score
+
+    # Check for condition groups
+    if rule.get("condition_groups"):
+        group_results = [_match_condition_group(g, fields, rule["name"]) for g in rule["condition_groups"]]
+        if rule["match"] == "any":
+            return any(group_results)
+        return all(group_results)
+
+    # Flat conditions (backward compatible)
     conditions = rule["conditions"]
     results = [_match_condition(c, fields, rule["name"]) for c in conditions]
     logger.debug(
@@ -479,20 +583,24 @@ def evaluate(email, spam_score=None, email_id=None):
     logger.debug("Checking %s rule(s)", len(rules), extra=extra)
 
     for rule in rules:
-        conditions = rule["conditions"]
-        match_type = rule["match"]
+        # Check for condition groups
+        if rule.get("condition_groups"):
+            group_results = [_match_condition_group(g, fields, rule["name"]) for g in rule["condition_groups"]]
+            matched = any(group_results) if rule["match"] == "any" else all(group_results)
+        else:
+            conditions = rule["conditions"]
+            match_type = rule["match"]
+            results = [_match_condition(c, fields, rule["name"]) for c in conditions]
+            if match_type == "all":
+                matched = all(results)
+            else:
+                matched = any(results)
 
-        results = [_match_condition(c, fields, rule["name"]) for c in conditions]
-
-        if match_type == "all" and all(results):
-            logger.info("Email matched rule '%s' (match=all, %s/%s conditions met)", rule["name"], sum(results), len(results), extra=extra)
+        if matched:
+            logger.info("Email matched rule '%s'", rule["name"], extra=extra)
             return rule
 
-        if match_type == "any" and any(results):
-            logger.info("Email matched rule '%s' (match=any, %s/%s conditions met)", rule["name"], sum(results), len(results), extra=extra)
-            return rule
-
-        logger.debug("Rule '%s' did not match (match=%s, results=%s)", rule["name"], match_type, results, extra=extra)
+        logger.debug("Rule '%s' did not match", rule["name"], extra=extra)
 
     logger.debug("Email did not match any rules", extra=extra)
     return None
