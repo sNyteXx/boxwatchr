@@ -148,7 +148,6 @@
                     <input name="action_destination" type="text" class="form-control action-dest flex-grow-1{% if a.type != 'move' %} d-none{% endif %}" placeholder="Folder (e.g. INBOX.Newsletters)" value="{{ a.destination if a.type == 'move' else '' }}"{% if a.type != 'move' %} disabled{% endif %}>
                     {% endif %}
                     <input name="action_webhook_url" type="text" class="form-control action-webhook flex-grow-1{% if a.type != 'notify_discord' %} d-none{% endif %}" placeholder="Discord webhook URL" value="{{ a.webhook_url if a.type == 'notify_discord' else '' }}"{% if a.type != 'notify_discord' %} disabled{% endif %}>
-                    {% endif %}
                     <button type="button" class="btn btn-outline-danger flex-shrink-0" data-action="remove-action">&times;</button>
                 </div>
                 {% endfor %}
