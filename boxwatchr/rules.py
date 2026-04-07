@@ -16,6 +16,7 @@ TERMINAL_ACTIONS = {"move"}
 
 _TEXT_OPERATORS = {"equals", "not_equals", "contains", "not_contains", "is_empty", "matches_regex"}
 _NUMERIC_OPERATORS = {"greater_than", "less_than", "greater_than_or_equal", "less_than_or_equal"}
+_TIME_FIELDS = {"email_age_days", "email_age_hours"}
 
 def load_rules(account_id=None):
     global _rules
@@ -607,3 +608,105 @@ def evaluate(email, spam_score=None, email_id=None):
 
     logger.debug("Email did not match any rules", extra=extra)
     return None
+
+
+def _time_condition_wait_seconds(cond, fields, rule_name):
+    """
+    Return the number of seconds until a single time condition becomes true,
+    0.0 if already satisfied, or None if it can never be satisfied.
+    """
+    field = cond["field"]
+    operator = cond["operator"]
+    threshold = float(cond["value"])
+    current_age = fields.get(field)
+
+    if current_age is None:
+        return None
+
+    multiplier = 3600.0 if field == "email_age_hours" else 86400.0
+
+    if operator == "greater_than":
+        if current_age > threshold:
+            return 0.0
+        # Wait until age strictly exceeds threshold (add 1 s buffer)
+        return (threshold - current_age) * multiplier + 1.0
+    if operator == "greater_than_or_equal":
+        if current_age >= threshold:
+            return 0.0
+        return (threshold - current_age) * multiplier
+    if operator in ("less_than", "less_than_or_equal"):
+        # Emails only get older; if it doesn't match now it never will
+        if _match_condition(cond, fields, rule_name):
+            return 0.0
+        return None
+    return None
+
+
+def get_min_retry_wait_seconds(email_data, spam_score=None, email_id=None):
+    """
+    Check whether any loaded rule could match this email in the future solely due
+    to time-based conditions (email_age_hours / email_age_days).
+
+    Returns the minimum number of seconds to wait before a potential match, or
+    None if no future match is expected via time conditions.
+
+    Only flat conditions are checked; condition_groups are intentionally skipped
+    because the vast majority of time-filtered rules use flat conditions.
+    """
+    fields = _extract_fields(email_data)
+    fields["rspamd_score"] = spam_score
+
+    with _rules_lock:
+        current_rules = list(_rules)
+
+    min_wait = None
+
+    for rule in current_rules:
+        conditions = rule.get("conditions", [])
+        if not conditions:
+            continue
+
+        time_conds = [c for c in conditions if c["field"] in _TIME_FIELDS]
+        if not time_conds:
+            continue  # No time conditions; future evaluation won't change anything
+
+        match = rule.get("match", "all")
+        other_conds = [c for c in conditions if c["field"] not in _TIME_FIELDS]
+
+        if match == "all":
+            # All conditions must pass. Non-time conditions that currently fail
+            # will never change, so a future match is only possible if they all pass.
+            if other_conds:
+                if not all(_match_condition(c, fields, rule["name"]) for c in other_conds):
+                    logger.debug(
+                        "Rule '%s': non-time conditions fail, no time-defer possible",
+                        rule["name"], extra={"email_id": email_id}
+                    )
+                    continue
+            # All non-time conditions pass — compute when all time conditions are met.
+            wait_per_cond = [_time_condition_wait_seconds(c, fields, rule["name"]) for c in time_conds]
+            if any(w is None for w in wait_per_cond):
+                continue  # At least one time condition can never be satisfied
+            rule_wait = max(wait_per_cond)  # Need all to pass simultaneously
+
+        else:  # match == "any"
+            # Any single condition passing is enough. We only care about time
+            # conditions that will eventually become true.
+            future_waits = []
+            for c in time_conds:
+                w = _time_condition_wait_seconds(c, fields, rule["name"])
+                if w is not None:
+                    future_waits.append(w)
+            if not future_waits:
+                continue
+            rule_wait = min(future_waits)  # Earliest any time condition fires
+
+        if rule_wait > 0:
+            logger.debug(
+                "Rule '%s': time-deferred match possible in %.0f s",
+                rule["name"], rule_wait, extra={"email_id": email_id}
+            )
+            if min_wait is None or rule_wait < min_wait:
+                min_wait = rule_wait
+
+    return min_wait

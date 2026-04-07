@@ -17,7 +17,7 @@ logger = get_logger("boxwatchr.database")
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "boxwatchr.db")
 
-CURRENT_VERSION = 4
+CURRENT_VERSION = 5
 
 _log_queue = collections.deque()
 _email_queue = collections.deque()
@@ -31,6 +31,7 @@ _processing_active = False
 _processing_lock = threading.Lock()
 _flush_failures = 0
 _MAX_FLUSH_FAILURES = 20
+_UNSET = object()  # sentinel for optional update parameters
 
 def set_processing(active):
     global _processing_active
@@ -94,6 +95,11 @@ def _migrate_v3_to_v4(conn):
     conn.execute("ALTER TABLE rules ADD COLUMN condition_groups TEXT NOT NULL DEFAULT '[]'")
     logger.info("Migration v3 to v4 complete")
 
+def _migrate_v4_to_v5(conn):
+    logger.info("Migrating database schema from v4 to v5 (adding retry_after to emails)")
+    conn.execute("ALTER TABLE emails ADD COLUMN retry_after TEXT")
+    logger.info("Migration v4 to v5 complete")
+
 def _create_schema(conn):
     logger.info("Creating database schema (v4)")
 
@@ -155,6 +161,7 @@ def _create_schema(conn):
             content_hash TEXT,
             rspamd_symbols TEXT,
             body_text TEXT,
+            retry_after TEXT,
             UNIQUE(uid, folder, account_id)
         )
     """)
@@ -227,6 +234,12 @@ def initialize():
                 _set_version(conn, 4)
                 conn.commit()
                 logger.info("Database migrated to version 4")
+
+            if current_version < 5:
+                _migrate_v4_to_v5(conn)
+                _set_version(conn, 5)
+                conn.commit()
+                logger.info("Database migrated to version 5")
 
     except sqlite3.Error as e:
         logger.error("Failed to initialize database: %s", e)
@@ -599,8 +612,8 @@ def _flush():
                     id, account_id, uid, folder, sender, recipients, subject, date_received, message_size,
                     spam_score, rule_matched, actions, history, raw_headers, attachments,
                     processed, processed_at, processed_notes, message_id, rspamd_learned, content_hash,
-                    rspamd_symbols, body_text
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    rspamd_symbols, body_text, retry_after
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(uid, folder, account_id) DO UPDATE SET
                     sender = excluded.sender,
                     recipients = excluded.recipients,
@@ -615,7 +628,7 @@ def _flush():
                 item["raw_headers"], item["attachments"],
                 item["processed"], item["processed_at"], item["processed_notes"],
                 item["message_id"], item["rspamd_learned"], item.get("content_hash"),
-                item.get("rspamd_symbols"), item.get("body_text")
+                item.get("rspamd_symbols"), item.get("body_text"), item.get("retry_after")
             ))
 
         for item in updates_batch:
@@ -639,6 +652,9 @@ def _flush():
             if item["rspamd_learned"] is not None:
                 cols.append("rspamd_learned = ?")
                 vals.append(item["rspamd_learned"])
+            if "retry_after" in item:
+                cols.append("retry_after = ?")
+                vals.append(item["retry_after"])  # None clears it (sets to NULL)
             vals.append(item["id"])
             conn.execute(
                 "UPDATE emails SET %s WHERE id = ?" % ", ".join(cols),
@@ -743,7 +759,7 @@ def enqueue_email(uid, folder, sender, recipients, subject, date_received, messa
                   spam_score, rule_matched, actions, raw_headers, attachments, processed,
                   processed_at, processed_notes, email_id=None, history=None,
                   message_id=None, rspamd_learned=None, account_id=None, content_hash=None,
-                  rspamd_symbols=None, body_text=None):
+                  rspamd_symbols=None, body_text=None, retry_after=None):
     with _queue_lock:
         _email_queue.append({
             "id": email_id,
@@ -769,24 +785,29 @@ def enqueue_email(uid, folder, sender, recipients, subject, date_received, messa
             "content_hash": content_hash,
             "rspamd_symbols": rspamd_symbols,
             "body_text": body_text,
+            "retry_after": retry_after,
         })
         queue_size = len(_email_queue)
     logger.debug("Enqueued email uid=%s id=%s (email queue size: %s)", uid, email_id, queue_size)
     return email_id
 
 def enqueue_email_update(email_id, rule_matched, actions, processed, processed_at, processed_notes,
-                         history=None, rspamd_learned=None):
+                         history=None, rspamd_learned=None, retry_after=_UNSET):
+    item = {
+        "id": email_id,
+        "rule_matched": rule_matched,
+        "actions": json.dumps(actions),
+        "processed": processed,
+        "processed_at": processed_at,
+        "processed_notes": processed_notes,
+        "history": history,
+        "rspamd_learned": rspamd_learned,
+    }
+    # Only include retry_after in the update when explicitly provided
+    if retry_after is not _UNSET:
+        item["retry_after"] = retry_after
     with _queue_lock:
-        _email_update_queue.append({
-            "id": email_id,
-            "rule_matched": rule_matched,
-            "actions": json.dumps(actions),
-            "processed": processed,
-            "processed_at": processed_at,
-            "processed_notes": processed_notes,
-            "history": history,
-            "rspamd_learned": rspamd_learned,
-        })
+        _email_update_queue.append(item)
         queue_size = len(_email_update_queue)
     logger.debug("Enqueued email update id=%s processed=%s (update queue size: %s)", email_id, processed, queue_size)
 
@@ -843,11 +864,15 @@ def get_unprocessed_emails(account_id=None):
         with _db() as conn:
             if account_id is not None:
                 rows = conn.execute(
-                    "SELECT * FROM emails WHERE processed = 0 AND account_id = ?",
+                    "SELECT * FROM emails WHERE processed = 0 AND account_id = ?"
+                    " AND (retry_after IS NULL OR retry_after <= datetime('now'))",
                     (account_id,)
                 ).fetchall()
             else:
-                rows = conn.execute("SELECT * FROM emails WHERE processed = 0").fetchall()
+                rows = conn.execute(
+                    "SELECT * FROM emails WHERE processed = 0"
+                    " AND (retry_after IS NULL OR retry_after <= datetime('now'))"
+                ).fetchall()
             logger.debug("Found %s unprocessed email record(s)", len(rows))
             return rows
 
