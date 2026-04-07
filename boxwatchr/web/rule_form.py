@@ -11,6 +11,89 @@ from boxwatchr.web.app import app, _require_auth, _require_csrf, _check_csrf, lo
 from boxwatchr.web.rules import _FIELD_LABELS, _ACTION_LABELS
 
 
+_RULE_TEMPLATES = [
+    {
+        "id": "newsletter",
+        "name": "Newsletter Filter",
+        "description": "Move newsletters to a folder",
+        "rule": {
+            "name": "Newsletter Filter",
+            "match": "any",
+            "conditions": [
+                {"field": "subject", "operator": "contains", "value": "unsubscribe"},
+                {"field": "raw_headers", "operator": "contains", "value": "List-Unsubscribe"},
+            ],
+            "actions": [{"type": "move", "destination": ""}],
+        },
+    },
+    {
+        "id": "spam_blocker",
+        "name": "High Spam Blocker",
+        "description": "Auto-learn emails with very high spam scores",
+        "rule": {
+            "name": "High Spam Blocker",
+            "match": "all",
+            "conditions": [
+                {"field": "rspamd_score", "operator": "greater_than", "value": "15"},
+            ],
+            "actions": [{"type": "learn_spam"}],
+        },
+    },
+    {
+        "id": "invoice",
+        "name": "Invoice/Receipt Collector",
+        "description": "Flag and label emails that look like invoices",
+        "rule": {
+            "name": "Invoice/Receipt Collector",
+            "match": "any",
+            "conditions": [
+                {"field": "subject", "operator": "matches_regex", "value": "(invoice|receipt|rechnung|bestellung|order)"},
+            ],
+            "actions": [{"type": "flag"}, {"type": "add_label", "label": "Invoice"}],
+        },
+    },
+    {
+        "id": "attachment_alert",
+        "name": "Dangerous Attachment Alert",
+        "description": "Notify when suspicious attachments are received",
+        "rule": {
+            "name": "Dangerous Attachment Alert",
+            "match": "any",
+            "conditions": [
+                {"field": "attachment_extension", "operator": "matches_regex", "value": "(exe|bat|cmd|scr|vbs|js|ps1)"},
+            ],
+            "actions": [{"type": "notify_discord", "webhook_url": ""}, {"type": "flag"}],
+        },
+    },
+    {
+        "id": "ham_learner",
+        "name": "Trusted Sender (Ham Learner)",
+        "description": "Learn emails from trusted senders as ham",
+        "rule": {
+            "name": "Trusted Sender",
+            "match": "all",
+            "conditions": [
+                {"field": "sender_domain", "operator": "equals", "value": "example.com"},
+            ],
+            "actions": [{"type": "learn_ham"}],
+        },
+    },
+    {
+        "id": "old_email_cleanup",
+        "name": "Old Email Cleanup",
+        "description": "Move emails older than 30 days to archive",
+        "rule": {
+            "name": "Old Email Cleanup",
+            "match": "all",
+            "conditions": [
+                {"field": "email_age_days", "operator": "greater_than", "value": "30"},
+            ],
+            "actions": [{"type": "move", "destination": ""}],
+        },
+    },
+]
+
+
 def _parse_rule_form(form):
     condition_fields = form.getlist("condition_field")
     condition_operators = form.getlist("condition_operator")
@@ -18,15 +101,32 @@ def _parse_rule_form(form):
     action_types = form.getlist("action_type")
     action_destinations = form.getlist("action_destination")
     action_webhook_urls = form.getlist("action_webhook_url")
+    action_labels = form.getlist("action_label")
 
     conditions = []
     for field, operator, value in zip(condition_fields, condition_operators, condition_values):
         if field and operator:
             conditions.append({"field": field, "operator": operator, "value": value})
 
+    # Parse condition groups
+    condition_groups = []
+    group_count = int(form.get("condition_group_count", "0"))
+    for gi in range(group_count):
+        group_match = form.get("group_%d_match" % gi, "all")
+        group_fields = form.getlist("group_%d_field" % gi)
+        group_operators = form.getlist("group_%d_operator" % gi)
+        group_values = form.getlist("group_%d_value" % gi)
+        group_conds = []
+        for field, operator, value in zip(group_fields, group_operators, group_values):
+            if field and operator:
+                group_conds.append({"field": field, "operator": operator, "value": value})
+        if group_conds:
+            condition_groups.append({"match": group_match, "conditions": group_conds})
+
     actions = []
     dest_idx = 0
     webhook_idx = 0
+    label_idx = 0
     for action_type in action_types:
         if not action_type:
             continue
@@ -37,14 +137,20 @@ def _parse_rule_form(form):
         if action_type == "notify_discord":
             action["webhook_url"] = action_webhook_urls[webhook_idx] if webhook_idx < len(action_webhook_urls) else ""
             webhook_idx += 1
+        if action_type == "add_label":
+            action["label"] = action_labels[label_idx] if label_idx < len(action_labels) else ""
+            label_idx += 1
         actions.append(action)
 
-    return {
+    result = {
         "name": form.get("name", "").strip(),
         "match": form.get("match", "all"),
         "conditions": conditions,
         "actions": actions,
     }
+    if condition_groups:
+        result["condition_groups"] = condition_groups
+    return result
 
 
 @app.route("/rules/new", methods=["GET", "POST"])
@@ -53,6 +159,27 @@ def rule_new():
     error = None
     rule = {"name": "", "match": "all", "conditions": [], "actions": []}
     folders = imap.get_folder_list()
+
+    # Apply template if specified
+    template_id = request.args.get("template")
+    if template_id and request.method == "GET":
+        for tmpl in _RULE_TEMPLATES:
+            if tmpl["id"] == template_id:
+                rule = dict(tmpl["rule"])
+                break
+
+    # Pre-fill from email if specified
+    prefill_sender = request.args.get("sender", "").strip()
+    prefill_subject = request.args.get("subject", "").strip()
+    if request.method == "GET" and (prefill_sender or prefill_subject):
+        conditions = []
+        if prefill_sender:
+            conditions.append({"field": "sender", "operator": "equals", "value": prefill_sender})
+        if prefill_subject:
+            conditions.append({"field": "subject", "operator": "contains", "value": prefill_subject})
+        rule["conditions"] = conditions
+        if not rule["name"]:
+            rule["name"] = "Rule for %s" % (prefill_sender or prefill_subject)
 
     if request.method == "POST":
         _check_csrf()
@@ -84,6 +211,7 @@ def rule_new():
         field_labels=_FIELD_LABELS,
         action_labels=_ACTION_LABELS,
         show_logout=bool(config.WEB_PASSWORD),
+        templates=_RULE_TEMPLATES,
     )
 
 @app.route("/rules/<rule_id>/edit", methods=["GET", "POST"])
@@ -134,6 +262,7 @@ def rule_edit(rule_id):
         field_labels=_FIELD_LABELS,
         action_labels=_ACTION_LABELS,
         show_logout=bool(config.WEB_PASSWORD),
+        templates=[],
     )
 
 @app.route("/rules/<rule_id>/run", methods=["POST"])

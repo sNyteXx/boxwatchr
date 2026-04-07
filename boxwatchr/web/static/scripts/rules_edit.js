@@ -1,4 +1,4 @@
-var TEXT_OPERATORS_HTML = '<option value="equals">equals</option><option value="not_equals">does not equal</option><option value="contains">contains</option><option value="not_contains">does not contain</option><option value="is_empty">is empty</option>';
+var TEXT_OPERATORS_HTML = '<option value="equals">equals</option><option value="not_equals">does not equal</option><option value="contains">contains</option><option value="not_contains">does not contain</option><option value="matches_regex">matches regex</option><option value="is_empty">is empty</option>';
 var NUMERIC_OPERATORS_HTML = '<option value="greater_than">greater than</option><option value="less_than">less than</option><option value="greater_than_or_equal">greater than or equal</option><option value="less_than_or_equal">less than or equal</option>';
 
 function onFieldChange(select) {
@@ -35,13 +35,19 @@ function onActionTypeChange(select) {
     var row = select.closest(".action-row");
     var destInput = row.querySelector(".action-dest");
     var webhookInput = row.querySelector(".action-webhook");
+    var labelInput = row.querySelector(".action-label");
     var isMove = select.value === "move";
     var isDiscord = select.value === "notify_discord";
+    var isLabel = select.value === "add_label";
     destInput.classList.toggle("d-none", !isMove);
     destInput.disabled = !isMove;
     if (webhookInput) {
         webhookInput.classList.toggle("d-none", !isDiscord);
         webhookInput.disabled = !isDiscord;
+    }
+    if (labelInput) {
+        labelInput.classList.toggle("d-none", !isLabel);
+        labelInput.disabled = !isLabel;
     }
 }
 
@@ -171,6 +177,10 @@ document.addEventListener("DOMContentLoaded", function() {
                     if (at.value === "notify_discord") {
                         var wh = row.querySelector("[name='action_webhook_url']");
                         if (wh) a.webhook_url = wh.value;
+                    }
+                    if (at.value === "add_label") {
+                        var lbl = row.querySelector("[name='action_label']");
+                        if (lbl) a.label = lbl.value;
                     }
                     actions.push(a);
                 }
