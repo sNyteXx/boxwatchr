@@ -90,7 +90,7 @@ def _migrate_v2_to_v3(conn):
     logger.info("Migration v2 to v3 complete")
 
 def _create_schema(conn):
-    logger.info("Creating database schema (v2)")
+    logger.info("Creating database schema (v3)")
 
     conn.execute("""
         CREATE TABLE accounts (
@@ -533,7 +533,7 @@ def _maybe_prune(conn):
             logger.info("Pruned %s log entries older than %s days", result.rowcount, config.DB_PRUNE_DAYS)
 
     row = conn.execute("SELECT value FROM config WHERE key = 'email_retention_days'").fetchone()
-    email_retention_days = int(row[0]) if row else 0
+    email_retention_days = int(row["value"]) if row else 0
     if email_retention_days > 0:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=email_retention_days)).strftime("%Y-%m-%d %H:%M:%S")
         result = conn.execute("DELETE FROM emails WHERE processed_at < ?", (cutoff,))
