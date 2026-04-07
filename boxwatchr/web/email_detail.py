@@ -174,4 +174,4 @@ def email_action(email_id):
             client.logout()
     except Exception as e:
         logger.error("Manual action '%s' failed for email %s: %s", action_type, email_id, e)
-        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+        return json.dumps({"error": "Action failed"}), 500, {"Content-Type": "application/json"}
