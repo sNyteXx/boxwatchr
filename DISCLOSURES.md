@@ -4,6 +4,14 @@ This file covers privacy, credential storage, AI assistance, third-party softwar
 
 ---
 
+## Upstream Project
+
+boxwatchr is a fork of [nulcraft/boxwatchr](https://github.com/nulcraft/boxwatchr) by [nulcraft](https://github.com/nulcraft). The original project is published under the GNU General Public License v3.0, and this fork is distributed under the same license. Full license text is in [LICENSE](LICENSE).
+
+Changes made in this fork relative to the original are documented in [CHANGELOG.md](CHANGELOG.md). They include bug fixes across the rule engine, IMAP handling, CSRF protection, and the login rate limiter; a redesigned dashboard with gradient styling and a cyberpunk theme switcher; a first-run setup wizard; rspamd and Redis tuning; Fernet-encrypted IMAP password storage; reverse-proxy example configurations; and various web UI, logging, and documentation improvements.
+
+---
+
 ## Privacy and Data Handling
 
 boxwatchr runs entirely on your own infrastructure. It connects to services you configure (your IMAP server) and services bundled inside the container (rspamd, Redis, Unbound). It has no connection to any server operated by sNyteXx.
