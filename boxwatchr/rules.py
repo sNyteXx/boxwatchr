@@ -597,10 +597,10 @@ def evaluate(email, spam_score=None, email_id=None):
                 matched = any(results)
 
         if matched:
-            logger.info("Email matched rule '%s'", rule["name"], extra=extra)
+            logger.info("Email matched rule '%s' (match=%s)", rule["name"], rule["match"], extra=extra)
             return rule
 
-        logger.debug("Rule '%s' did not match", rule["name"], extra=extra)
+        logger.debug("Rule '%s' did not match (match=%s)", rule["name"], rule["match"], extra=extra)
 
     logger.debug("Email did not match any rules", extra=extra)
     return None
