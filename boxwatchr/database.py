@@ -95,7 +95,7 @@ def _migrate_v3_to_v4(conn):
     logger.info("Migration v3 to v4 complete")
 
 def _create_schema(conn):
-    logger.info("Creating database schema (v3)")
+    logger.info("Creating database schema (v4)")
 
     conn.execute("""
         CREATE TABLE accounts (
