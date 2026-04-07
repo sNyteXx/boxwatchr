@@ -195,6 +195,7 @@ def rule_new():
                     match=validated["match"],
                     conditions_json=json.dumps(validated["conditions"]),
                     actions_json=json.dumps(validated["actions"]),
+                    condition_groups_json=json.dumps(validated.get("condition_groups", [])),
                 )
                 load_rules()
                 logger.info("User created rule '%s'", validated["name"])
@@ -228,6 +229,7 @@ def rule_edit(rule_id):
         "match": row["match"],
         "conditions": json.loads(row["conditions"] or "[]"),
         "actions": json.loads(row["actions"] or "[]"),
+        "condition_groups": json.loads(row["condition_groups"] or "[]") if "condition_groups" in row.keys() else [],
     }
     folders = imap.get_folder_list()
 
@@ -246,6 +248,7 @@ def rule_edit(rule_id):
                     match=validated["match"],
                     conditions_json=json.dumps(validated["conditions"]),
                     actions_json=json.dumps(validated["actions"]),
+                    condition_groups_json=json.dumps(validated.get("condition_groups", [])),
                 )
                 load_rules()
                 logger.info("User updated rule '%s'", validated["name"])
@@ -279,6 +282,8 @@ def rule_run(rule_id):
         "conditions": json.loads(row["conditions"] or "[]"),
         "actions": json.loads(row["actions"] or "[]"),
     }
+    if "condition_groups" in row.keys():
+        rule_dict["condition_groups"] = json.loads(row["condition_groups"] or "[]")
     rule = validate_rule(rule_dict)
     if rule is None:
         return redirect(url_for("rules_list"))

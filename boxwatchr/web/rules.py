@@ -26,6 +26,7 @@ _FIELD_LABELS = {
     "attachment_content_type": "Content type",
     "rspamd_score": "Spam score",
     "email_age_days": "Email age (days)",
+    "email_age_hours": "Email age (hours)",
 }
 
 _ACTION_LABELS = {
@@ -51,6 +52,7 @@ def rules_list():
     for row in rows:
         conditions = json.loads(row["conditions"] or "[]")
         actions = json.loads(row["actions"] or "[]")
+        condition_groups = json.loads(row["condition_groups"] or "[]") if "condition_groups" in row.keys() else []
         name = row["name"]
         stats = rule_stats.get(name, {"count": 0, "last_triggered": None})
         rules.append({
@@ -58,6 +60,7 @@ def rules_list():
             "name": name,
             "match": row["match"],
             "conditions": conditions,
+            "condition_groups": condition_groups,
             "actions": actions,
             "enabled": bool(row["enabled"]) if "enabled" in row.keys() else True,
             "hit_count": stats["count"],

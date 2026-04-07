@@ -92,6 +92,7 @@
 {% for rule in rules %}
 {% set rule_text = [rule.name] %}
 {% for c in rule.conditions %}{% set _ = rule_text.append(c.field) %}{% set _ = rule_text.append(c.operator) %}{% set _ = rule_text.append(c.value) %}{% endfor %}
+{% for g in rule.condition_groups %}{% for c in g.conditions %}{% set _ = rule_text.append(c.field) %}{% set _ = rule_text.append(c.operator) %}{% set _ = rule_text.append(c.value) %}{% endfor %}{% endfor %}
 {% for a in rule.actions %}{% set _ = rule_text.append(a.type) %}{% if a.destination %}{% set _ = rule_text.append(a.destination) %}{% endif %}{% endfor %}
 <div class="card mb-3 rule-card{% if not rule.enabled %} opacity-50{% endif %}" data-rule-text="{{ rule_text | join(' ') | lower | e }}">
     <div class="card-body">
@@ -162,6 +163,36 @@
                     </li>
                     {% endfor %}
                 </ul>
+                {% elif rule.condition_groups %}
+                {% for g in rule.condition_groups %}
+                {% set op_labels = {
+                    "equals": "equals",
+                    "not_equals": "does not equal",
+                    "contains": "contains",
+                    "not_contains": "does not contain",
+                    "is_empty": "is empty",
+                    "greater_than": ">",
+                    "less_than": "<",
+                    "greater_than_or_equal": ">=",
+                    "less_than_or_equal": "<="
+                } %}
+                <div class="border rounded p-2 mb-2 small">
+                    <span class="text-secondary small">Group {{ loop.index }} — match {{ g.match }}</span>
+                    <ul class="list-unstyled mb-0 mt-1">
+                        {% for c in g.conditions %}
+                        <li class="mb-1">
+                            <code>{{ c.field }}</code>
+                            <span class="text-secondary">{{ op_labels.get(c.operator, c.operator) }}</span>
+                            {% if c.operator == "is_empty" %}
+                            <span class="text-secondary">{{ "empty" if c.value == "true" else "not empty" }}</span>
+                            {% else %}
+                            <code>{{ c.value }}</code>
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endfor %}
                 {% else %}
                 <span class="text-secondary small">—</span>
                 {% endif %}

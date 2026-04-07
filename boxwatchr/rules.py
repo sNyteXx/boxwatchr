@@ -80,10 +80,10 @@ def validate_rule(rule):
         "recipient_domain_root", "recipient_domain_tld",
         "subject", "raw_headers",
         "attachment_name", "attachment_extension", "attachment_content_type",
-        "rspamd_score", "email_age_days",
+        "rspamd_score", "email_age_days", "email_age_hours",
     }
 
-    _NUMERIC_FIELDS = {"rspamd_score", "email_age_days"}
+    _NUMERIC_FIELDS = {"rspamd_score", "email_age_days", "email_age_hours"}
 
     valid_actions = {"move", "mark_read", "mark_unread", "flag", "unflag", "learn_spam", "learn_ham", "notify_discord", "add_label"}
     contradictory_pairs = [{"mark_read", "mark_unread"}, {"flag", "unflag"}, {"learn_spam", "learn_ham"}]
@@ -338,11 +338,13 @@ def _extract_fields(email):
     ]
 
     email_age_days = None
+    email_age_hours = None
     if date_received:
         try:
             dt = datetime.strptime(date_received, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
             delta = datetime.now(timezone.utc) - dt
             email_age_days = delta.total_seconds() / 86400.0
+            email_age_hours = delta.total_seconds() / 3600.0
         except (ValueError, TypeError):
             pass
 
@@ -358,6 +360,7 @@ def _extract_fields(email):
         "raw_headers": raw_headers.lower(),
         "attachments": attachment_parts,
         "email_age_days": email_age_days,
+        "email_age_hours": email_age_hours,
     }
 
 def _match_condition(condition, fields, rule_name):
@@ -394,12 +397,12 @@ def _match_condition(condition, fields, rule_name):
         )
         return result
 
-    if field == "email_age_days":
-        age = fields.get("email_age_days")
+    if field == "email_age_days" or field == "email_age_hours":
+        age = fields.get(field)
         if age is None:
             logger.debug(
-                "Rule '%s': email_age_days condition skipped, date not available",
-                rule_name
+                "Rule '%s': %s condition skipped, date not available",
+                rule_name, field
             )
             return False
         try:
@@ -418,8 +421,8 @@ def _match_condition(condition, fields, rule_name):
         else:
             result = False
         logger.debug(
-            "Rule '%s': condition field=email_age_days operator=%s value=%s age=%.2f => %s",
-            rule_name, operator, threshold, age_float, result
+            "Rule '%s': condition field=%s operator=%s value=%s age=%.2f => %s",
+            rule_name, field, operator, threshold, age_float, result
         )
         return result
 

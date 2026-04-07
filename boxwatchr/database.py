@@ -17,7 +17,7 @@ logger = get_logger("boxwatchr.database")
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "boxwatchr.db")
 
-CURRENT_VERSION = 3
+CURRENT_VERSION = 4
 
 _log_queue = collections.deque()
 _email_queue = collections.deque()
@@ -89,6 +89,11 @@ def _migrate_v2_to_v3(conn):
     conn.execute("ALTER TABLE emails ADD COLUMN body_text TEXT")
     logger.info("Migration v2 to v3 complete")
 
+def _migrate_v3_to_v4(conn):
+    logger.info("Migrating database schema from v3 to v4 (adding condition_groups to rules)")
+    conn.execute("ALTER TABLE rules ADD COLUMN condition_groups TEXT NOT NULL DEFAULT '[]'")
+    logger.info("Migration v3 to v4 complete")
+
 def _create_schema(conn):
     logger.info("Creating database schema (v3)")
 
@@ -117,6 +122,7 @@ def _create_schema(conn):
             match               TEXT NOT NULL DEFAULT 'all',
             conditions          TEXT NOT NULL DEFAULT '[]',
             actions             TEXT NOT NULL DEFAULT '[]',
+            condition_groups    TEXT NOT NULL DEFAULT '[]',
             continue_processing INTEGER NOT NULL DEFAULT 0,
             enabled             INTEGER NOT NULL DEFAULT 1
         )
@@ -216,6 +222,12 @@ def initialize():
                 conn.commit()
                 logger.info("Database migrated to version 3")
 
+            if current_version < 4:
+                _migrate_v3_to_v4(conn)
+                _set_version(conn, 4)
+                conn.commit()
+                logger.info("Database migrated to version 4")
+
     except sqlite3.Error as e:
         logger.error("Failed to initialize database: %s", e)
         raise
@@ -306,7 +318,7 @@ def get_rule(rule_id):
         logger.error("Failed to fetch rule %s: %s", rule_id, e)
         return None
 
-def insert_rule(account_id, name, match, conditions_json, actions_json, continue_processing=0, enabled=1):
+def insert_rule(account_id, name, match, conditions_json, actions_json, condition_groups_json="[]", continue_processing=0, enabled=1):
     rule_id = str(uuid.uuid4())
     try:
         with _db() as conn:
@@ -316,22 +328,22 @@ def insert_rule(account_id, name, match, conditions_json, actions_json, continue
             ).fetchone()
             position = row["next_pos"]
             conn.execute("""
-                INSERT INTO rules (id, account_id, position, name, match, conditions, actions, continue_processing, enabled)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (rule_id, account_id, position, name, match, conditions_json, actions_json, int(continue_processing), int(enabled)))
+                INSERT INTO rules (id, account_id, position, name, match, conditions, actions, condition_groups, continue_processing, enabled)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (rule_id, account_id, position, name, match, conditions_json, actions_json, condition_groups_json, int(continue_processing), int(enabled)))
             conn.commit()
     except sqlite3.Error as e:
         logger.error("Failed to insert rule: %s", e)
         raise
     return rule_id
 
-def update_rule(rule_id, name, match, conditions_json, actions_json, continue_processing=0, enabled=1):
+def update_rule(rule_id, name, match, conditions_json, actions_json, condition_groups_json="[]", continue_processing=0, enabled=1):
     try:
         with _db() as conn:
             conn.execute("""
-                UPDATE rules SET name = ?, match = ?, conditions = ?, actions = ?, continue_processing = ?, enabled = ?
+                UPDATE rules SET name = ?, match = ?, conditions = ?, actions = ?, condition_groups = ?, continue_processing = ?, enabled = ?
                 WHERE id = ?
-            """, (name, match, conditions_json, actions_json, int(continue_processing), int(enabled), rule_id))
+            """, (name, match, conditions_json, actions_json, condition_groups_json, int(continue_processing), int(enabled), rule_id))
             conn.commit()
     except sqlite3.Error as e:
         logger.error("Failed to update rule %s: %s", rule_id, e)
@@ -414,10 +426,11 @@ def duplicate_rule(rule_id, account_id):
             ).fetchone()
             position = row["next_pos"]
             conn.execute("""
-                INSERT INTO rules (id, account_id, position, name, match, conditions, actions, continue_processing, enabled)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO rules (id, account_id, position, name, match, conditions, actions, condition_groups, continue_processing, enabled)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (new_id, account_id, position, rule["name"] + " (copy)", rule["match"],
-                  rule["conditions"], rule["actions"], rule["continue_processing"], rule["enabled"]))
+                  rule["conditions"], rule["actions"], rule["condition_groups"] if "condition_groups" in rule.keys() else "[]",
+                  rule["continue_processing"], rule["enabled"]))
             conn.commit()
             return new_id
     except sqlite3.Error as e:

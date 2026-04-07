@@ -1,12 +1,18 @@
 var TEXT_OPERATORS_HTML = '<option value="equals">equals</option><option value="not_equals">does not equal</option><option value="contains">contains</option><option value="not_contains">does not contain</option><option value="matches_regex">matches regex</option><option value="is_empty">is empty</option>';
 var NUMERIC_OPERATORS_HTML = '<option value="greater_than">greater than</option><option value="less_than">less than</option><option value="greater_than_or_equal">greater than or equal</option><option value="less_than_or_equal">less than or equal</option>';
 
+var NUMERIC_FIELDS = ["rspamd_score", "email_age_days", "email_age_hours"];
+
+function isNumericField(value) {
+    return NUMERIC_FIELDS.indexOf(value) !== -1;
+}
+
 function onFieldChange(select) {
     var row = select.closest(".condition-row");
     var operatorSelect = row.querySelector(".cond-operator");
     var textInput = row.querySelector(".value-text");
     var boolSelect = row.querySelector(".value-bool");
-    var isNumeric = select.value === "rspamd_score" || select.value === "email_age_days";
+    var isNumeric = isNumericField(select.value);
 
     operatorSelect.innerHTML = isNumeric ? NUMERIC_OPERATORS_HTML : TEXT_OPERATORS_HTML;
 
@@ -86,6 +92,93 @@ function addAction() {
     if (notice) notice.classList.add("d-none");
 }
 
+function getGroupCount() {
+    var countInput = document.getElementById("condition_group_count");
+    return countInput ? parseInt(countInput.value, 10) || 0 : 0;
+}
+
+function setGroupCount(n) {
+    var countInput = document.getElementById("condition_group_count");
+    if (countInput) countInput.value = n;
+}
+
+function renameGroupInputs() {
+    var groups = document.querySelectorAll("#groups-container .condition-group-row");
+    groups.forEach(function(group, gi) {
+        var label = group.querySelector(".group-label");
+        if (label) label.textContent = "Group " + (gi + 1);
+        var matchSel = group.querySelector(".group-match-select");
+        if (matchSel) matchSel.name = "group_" + gi + "_match";
+        var fields = group.querySelectorAll("[data-gname='field']");
+        var operators = group.querySelectorAll("[data-gname='operator']");
+        var values = group.querySelectorAll("[data-gname='value']");
+        fields.forEach(function(el) { el.name = "group_" + gi + "_field"; });
+        operators.forEach(function(el) { el.name = "group_" + gi + "_operator"; });
+        values.forEach(function(el) { el.name = "group_" + gi + "_value"; });
+    });
+    setGroupCount(groups.length);
+    var notice = document.getElementById("groups-empty");
+    if (notice) notice.classList.toggle("d-none", groups.length > 0);
+}
+
+function addGroupCondition(groupEl) {
+    var template = document.getElementById("group-condition-template");
+    var clone = template.content.cloneNode(true);
+    var fieldSel = clone.querySelector(".cond-field");
+    var opSel = clone.querySelector(".cond-operator");
+    var valText = clone.querySelector(".value-text");
+    var valBool = clone.querySelector(".value-bool");
+    fieldSel.setAttribute("data-gname", "field");
+    opSel.setAttribute("data-gname", "operator");
+    valText.setAttribute("data-gname", "value");
+    valBool.setAttribute("data-gname", "value");
+    groupEl.querySelector(".group-conditions-container").appendChild(clone);
+    renameGroupInputs();
+}
+
+function addGroup() {
+    var template = document.getElementById("group-template");
+    var clone = template.content.cloneNode(true);
+    document.getElementById("groups-container").appendChild(clone);
+    renameGroupInputs();
+}
+
+function removeGroup(btn) {
+    btn.closest(".condition-group-row").remove();
+    renameGroupInputs();
+}
+
+function initGroupRow(groupEl) {
+    var condContainer = groupEl.querySelector(".group-conditions-container");
+    condContainer.addEventListener("change", function(e) {
+        if (e.target.classList.contains("cond-field")) {
+            onFieldChange(e.target);
+        } else if (e.target.classList.contains("cond-operator")) {
+            onOperatorChange(e.target);
+        }
+    });
+    condContainer.addEventListener("click", function(e) {
+        var btn = e.target.closest("[data-action='remove-condition']");
+        if (btn) {
+            btn.closest(".condition-row").remove();
+            renameGroupInputs();
+        }
+    });
+}
+
+function initExistingGroups() {
+    var groups = document.querySelectorAll("#groups-container .condition-group-row");
+    groups.forEach(function(group, gi) {
+        // Mark existing inputs with data-gname for renaming
+        var matchSel = group.querySelector("select[name^='group_'][name$='_match']");
+        if (matchSel) matchSel.classList.add("group-match-select");
+        group.querySelectorAll("select[name$='_field']").forEach(function(el) { el.setAttribute("data-gname", "field"); });
+        group.querySelectorAll("select[name$='_operator']").forEach(function(el) { el.setAttribute("data-gname", "operator"); });
+        group.querySelectorAll("input[name$='_value'], select[name$='_value']").forEach(function(el) { el.setAttribute("data-gname", "value"); });
+        initGroupRow(group);
+    });
+}
+
 document.addEventListener("DOMContentLoaded", function() {
     var condContainer = document.getElementById("conditions-container");
     if (condContainer) {
@@ -121,6 +214,37 @@ document.addEventListener("DOMContentLoaded", function() {
     var addActBtn = document.querySelector("[data-action='add-action']");
     if (addActBtn) addActBtn.addEventListener("click", addAction);
 
+    // Condition groups
+    initExistingGroups();
+
+    var groupsContainer = document.getElementById("groups-container");
+    if (groupsContainer) {
+        groupsContainer.addEventListener("click", function(e) {
+            var removeBtn = e.target.closest("[data-action='remove-group']");
+            if (removeBtn) {
+                removeGroup(removeBtn);
+                return;
+            }
+            var addCondBtn2 = e.target.closest("[data-action='add-group-condition']");
+            if (addCondBtn2) {
+                addGroupCondition(addCondBtn2.closest(".condition-group-row"));
+                return;
+            }
+        });
+    }
+
+    var addGroupBtn = document.querySelector("[data-action='add-group']");
+    if (addGroupBtn) {
+        addGroupBtn.addEventListener("click", function() {
+            addGroup();
+            var newGroup = groupsContainer.lastElementChild;
+            if (newGroup) {
+                initGroupRow(newGroup);
+                addGroupCondition(newGroup);
+            }
+        });
+    }
+
     // Simulation
     function esc(s) {
         var d = document.createElement("div");
@@ -145,7 +269,7 @@ document.addEventListener("DOMContentLoaded", function() {
             var name = form.querySelector("[name='name']").value || "Simulation";
             var match = form.querySelector("[name='match']").value || "all";
 
-            var condRows = form.querySelectorAll(".condition-row");
+            var condRows = form.querySelectorAll("#conditions-container .condition-row");
             var conditions = [];
             condRows.forEach(function(row) {
                 var field = row.querySelector("[name='condition_field']");
@@ -161,6 +285,33 @@ document.addEventListener("DOMContentLoaded", function() {
                         operator: op ? op.value : "",
                         value: val
                     });
+                }
+            });
+
+            var groupEls = form.querySelectorAll("#groups-container .condition-group-row");
+            var conditionGroups = [];
+            groupEls.forEach(function(groupEl) {
+                var matchSel = groupEl.querySelector(".group-match-select");
+                var groupMatch = matchSel ? matchSel.value : "all";
+                var groupConds = [];
+                groupEl.querySelectorAll(".condition-row").forEach(function(row) {
+                    var field = row.querySelector("[data-gname='field']");
+                    var op = row.querySelector("[data-gname='operator']:not(:disabled)");
+                    var valText = row.querySelector(".value-text");
+                    var valBool = row.querySelector(".value-bool");
+                    if (field && field.value) {
+                        var val = "";
+                        if (valText && !valText.disabled) val = valText.value;
+                        else if (valBool && !valBool.disabled) val = valBool.value;
+                        groupConds.push({
+                            field: field.value,
+                            operator: op ? op.value : "",
+                            value: val
+                        });
+                    }
+                });
+                if (groupConds.length > 0) {
+                    conditionGroups.push({match: groupMatch, conditions: groupConds});
                 }
             });
 
@@ -199,6 +350,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     name: name,
                     match: match,
                     conditions: conditions,
+                    condition_groups: conditionGroups,
                     actions: actions.length ? actions : [{type: "mark_read"}]
                 })
             })
