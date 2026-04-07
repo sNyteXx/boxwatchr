@@ -202,6 +202,8 @@
             badge.textContent = "watched";
             nameCell.appendChild(badge);
           }
+          var imapCell = document.createElement("td");
+          imapCell.textContent = f.imap_count !== null && f.imap_count !== undefined ? f.imap_count : "—";
           var countCell = document.createElement("td");
           countCell.textContent = f.email_count;
           var linkCell = document.createElement("td");
@@ -213,6 +215,7 @@
             linkCell.appendChild(a);
           }
           tr.appendChild(nameCell);
+          tr.appendChild(imapCell);
           tr.appendChild(countCell);
           tr.appendChild(linkCell);
           tbody.appendChild(tr);

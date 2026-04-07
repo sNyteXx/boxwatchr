@@ -570,7 +570,11 @@ def main():
 
     loaded_rules = health.load_rules_startup()
 
-    health.start_imap(loaded_rules)
+    if not health.start_imap(loaded_rules):
+        logger.warning(
+            "IMAP is not ready. boxwatchr will keep running with the web UI — "
+            "fix your settings at /config and it will connect automatically."
+        )
 
     _print_startup_checks(loaded_rules)
 
@@ -581,8 +585,36 @@ def main():
     try:
         while not _shutdown:
             logger.debug("Starting connection cycle: connecting for startup scan")
-            startup_client = imap.connect()
-            imap.select_folder(startup_client)
+            try:
+                startup_client = imap.connect()
+            except FatalImapError as e:
+                if _shutdown:
+                    break
+                logger.warning(
+                    "IMAP authentication error: %s. Fix your settings at /config — retrying automatically.",
+                    e
+                )
+                health.wait_for_services()
+                logger.info("Services recovered, reconnecting...")
+                continue
+
+            try:
+                imap.select_folder(startup_client)
+            except Exception as e:
+                try:
+                    startup_client.logout()
+                except Exception:
+                    pass
+                if _shutdown:
+                    break
+                logger.warning(
+                    "IMAP folder error: %s. Fix your settings at /config — retrying automatically.",
+                    e
+                )
+                health.wait_for_services()
+                logger.info("Services recovered, reconnecting...")
+                continue
+
             try:
                 current_uids = startup_scan(startup_client)
                 reprocess_pending_emails(startup_client, current_uids)
@@ -596,8 +628,15 @@ def main():
             try:
                 logger.debug("Entering IMAP watch loop")
                 imap.watch(process_email, rescan_callback=startup_scan)
-            except FatalImapError:
-                raise
+            except FatalImapError as e:
+                if _shutdown:
+                    break
+                logger.warning(
+                    "IMAP authentication error: %s. Fix your settings at /config — retrying automatically.",
+                    e
+                )
+                health.wait_for_services()
+                logger.info("Services recovered, reconnecting...")
             except Exception as e:
                 if _shutdown:
                     break
@@ -605,8 +644,6 @@ def main():
                 health.wait_for_services()
                 logger.info("Services recovered, reconnecting...")
 
-    except FatalImapError as e:
-        _fatal_exit(str(e))
     except KeyboardInterrupt:
         logger.info("Shutting down")
 

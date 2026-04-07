@@ -191,6 +191,26 @@ def api_folder_stats():
 
     folders = _imap.get_folder_list() if config.SETUP_COMPLETE else []
 
+    # Fetch actual message counts from the IMAP server via STATUS command
+    imap_counts = {}
+    if config.SETUP_COMPLETE and folders:
+        try:
+            client = _imap.connect()
+            try:
+                for folder in folders:
+                    try:
+                        status = client.folder_status(folder, ["MESSAGES"])
+                        imap_counts[folder] = status.get(b"MESSAGES", 0)
+                    except Exception:
+                        pass
+            finally:
+                try:
+                    client.logout()
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.debug("Could not fetch IMAP folder counts: %s", e)
+
     folder_counts = {}
     try:
         with db_connection() as conn:
@@ -209,6 +229,7 @@ def api_folder_stats():
         result.append({
             "name": folder,
             "email_count": folder_counts.get(folder, 0),
+            "imap_count": imap_counts.get(folder),
             "is_watched": folder == config.IMAP_FOLDER,
         })
 
@@ -218,6 +239,7 @@ def api_folder_stats():
             result.append({
                 "name": folder_name,
                 "email_count": count,
+                "imap_count": None,
                 "is_watched": folder_name == config.IMAP_FOLDER,
             })
 
