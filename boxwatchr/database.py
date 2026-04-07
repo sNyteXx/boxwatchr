@@ -441,14 +441,14 @@ def get_rule_stats(account_id):
     try:
         with _db() as conn:
             rows = conn.execute("""
-                SELECT JSON_EXTRACT(rule_matched, '$.name') AS rule_name,
+                SELECT COALESCE(JSON_EXTRACT(rule_matched, '$.id'), JSON_EXTRACT(rule_matched, '$.name')) AS rule_key,
                        COUNT(*) AS cnt,
                        MAX(processed_at) AS last_at
                 FROM emails
                 WHERE rule_matched IS NOT NULL AND account_id = ?
-                GROUP BY rule_name
+                GROUP BY rule_key
             """, (account_id,)).fetchall()
-            return {row["rule_name"]: {"count": row["cnt"], "last_triggered": row["last_at"]} for row in rows if row["rule_name"]}
+            return {row["rule_key"]: {"count": row["cnt"], "last_triggered": row["last_at"]} for row in rows if row["rule_key"]}
     except sqlite3.Error as e:
         logger.error("Failed to get rule stats for account %s: %s", account_id, e)
         return {}

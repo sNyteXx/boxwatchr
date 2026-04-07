@@ -4,8 +4,24 @@ import json
 import sqlite3
 from flask import render_template, jsonify, request, Response
 from boxwatchr import config
-from boxwatchr.database import db_connection, get_hourly_stats, get_top_rspamd_symbols
+from boxwatchr.database import db_connection, get_hourly_stats, get_top_rspamd_symbols, get_rule
 from boxwatchr.web.app import app, _require_auth, logger
+
+
+def _resolve_rule_name_from_json(rule_matched_json):
+    """Resolve current rule name via rule_id, falling back to stored name."""
+    if not rule_matched_json:
+        return ""
+    try:
+        data = json.loads(rule_matched_json)
+    except (json.JSONDecodeError, TypeError):
+        return ""
+    rule_id = data.get("id")
+    if rule_id:
+        rule_row = get_rule(rule_id)
+        if rule_row:
+            return rule_row["name"]
+    return data.get("name", "")
 
 def _get_stats():
     try:
@@ -22,12 +38,23 @@ def _get_stats():
             ).fetchone()[0]
 
             rule_rows = conn.execute(
-                "SELECT JSON_EXTRACT(rule_matched, '$.name') AS rule_name, COUNT(*) AS cnt"
+                "SELECT JSON_EXTRACT(rule_matched, '$.id') AS rule_id,"
+                " JSON_EXTRACT(rule_matched, '$.name') AS stored_name,"
+                " COUNT(*) AS cnt"
                 " FROM emails WHERE rule_matched IS NOT NULL"
-                " GROUP BY rule_name ORDER BY cnt DESC"
+                " GROUP BY COALESCE(rule_id, stored_name) ORDER BY cnt DESC"
             ).fetchall()
 
-            rule_counts = [(row["rule_name"], row["cnt"]) for row in rule_rows if row["rule_name"]]
+            rule_counts = []
+            for row in rule_rows:
+                rid = row["rule_id"]
+                name = row["stored_name"]
+                if rid:
+                    rule_row = get_rule(rid)
+                    if rule_row:
+                        name = rule_row["name"]
+                if name:
+                    rule_counts.append((name, row["cnt"]))
 
             score_rows = conn.execute(
                 "SELECT spam_score FROM emails WHERE spam_score IS NOT NULL"
@@ -97,15 +124,32 @@ def api_stats_timeline():
 
             rules_per_day = conn.execute(
                 "SELECT DATE(date_received) AS date,"
-                " JSON_EXTRACT(rule_matched, '$.name') AS rule_name,"
+                " JSON_EXTRACT(rule_matched, '$.id') AS rule_id,"
+                " JSON_EXTRACT(rule_matched, '$.name') AS stored_name,"
                 " COUNT(*) AS count"
                 " FROM emails"
                 " WHERE date_received >= DATE('now', '-30 days')"
                 " AND rule_matched IS NOT NULL"
                 " GROUP BY DATE(date_received),"
-                " JSON_EXTRACT(rule_matched, '$.name')"
+                " COALESCE(JSON_EXTRACT(rule_matched, '$.id'), JSON_EXTRACT(rule_matched, '$.name'))"
                 " ORDER BY date"
             ).fetchall()
+
+            # Build a cache to avoid repeated DB lookups for the same rule_id
+            _rule_name_cache = {}
+            resolved_rules_per_day = []
+            for row in rules_per_day:
+                if not row["date"]:
+                    continue
+                rid = row["rule_id"]
+                name = row["stored_name"]
+                if rid:
+                    if rid not in _rule_name_cache:
+                        rule_row = get_rule(rid)
+                        _rule_name_cache[rid] = rule_row["name"] if rule_row else None
+                    name = _rule_name_cache[rid] or name
+                if name:
+                    resolved_rules_per_day.append({"date": row["date"], "rule_name": name, "count": row["count"]})
 
         return jsonify({
             "emails_per_day": [
@@ -116,11 +160,7 @@ def api_stats_timeline():
                 {"date": row["date"], "avg_score": round(row["avg_score"], 2)}
                 for row in spam_trend if row["date"]
             ],
-            "rules_per_day": [
-                {"date": row["date"], "rule_name": row["rule_name"],
-                 "count": row["count"]}
-                for row in rules_per_day if row["date"] and row["rule_name"]
-            ],
+            "rules_per_day": resolved_rules_per_day,
         })
     except sqlite3.Error as e:
         logger.error("Failed to query timeline stats: %s", e)
@@ -260,12 +300,7 @@ def api_export_emails():
 
         records = []
         for row in rows:
-            rule_name = ""
-            if row["rule_matched"]:
-                try:
-                    rule_name = json.loads(row["rule_matched"]).get("name", "")
-                except (json.JSONDecodeError, TypeError):
-                    rule_name = ""
+            rule_name = _resolve_rule_name_from_json(row["rule_matched"])
             records.append({
                 "id": row["id"],
                 "sender": row["sender"] or "",

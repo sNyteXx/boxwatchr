@@ -2,8 +2,26 @@ import json
 import sqlite3
 from flask import render_template, request
 from boxwatchr import config
-from boxwatchr.database import db_connection
+from boxwatchr.database import db_connection, get_rule
 from boxwatchr.web.app import app, _require_auth, _score_class, _EMAILS_PAGE_SIZE, logger
+
+
+def _resolve_rule_name(rule_matched_json):
+    """Resolve current rule name via rule_id, falling back to the stored name."""
+    if not rule_matched_json:
+        return None, None
+    try:
+        data = json.loads(rule_matched_json)
+    except (json.JSONDecodeError, TypeError):
+        return None, None
+    rule_id = data.get("id")
+    stored_name = data.get("name")
+    if rule_id:
+        rule_row = get_rule(rule_id)
+        if rule_row:
+            return rule_row["name"], rule_id
+    return stored_name, rule_id
+
 
 @app.route("/emails")
 @_require_auth
@@ -14,47 +32,54 @@ def emails():
         page = 1
 
     folder = request.args.get("folder", "").strip()
+    q = request.args.get("q", "").strip()
+    rule_filter = request.args.get("rule_filter", "").strip()
+
+    # Build dynamic WHERE clause
+    conditions = []
+    params = []
+
+    if folder:
+        conditions.append("folder = ?")
+        params.append(folder)
+
+    if q:
+        # Escape SQL LIKE special characters in user input
+        escaped_q = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        conditions.append("(sender LIKE ? ESCAPE '\\' OR subject LIKE ? ESCAPE '\\')")
+        like = "%" + escaped_q + "%"
+        params.extend([like, like])
+
+    if rule_filter == "matched":
+        conditions.append("rule_matched IS NOT NULL")
+    elif rule_filter == "unmatched":
+        conditions.append("rule_matched IS NULL")
+
+    where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
 
     offset = (page - 1) * _EMAILS_PAGE_SIZE
     try:
         with db_connection() as conn:
-            if folder:
-                total = conn.execute(
-                    "SELECT COUNT(*) FROM emails WHERE folder = ?", (folder,)
-                ).fetchone()[0]
-                rows = conn.execute(
-                    """SELECT id, sender, subject, date_received, spam_score,
-                              processed_notes, processed, rule_matched
-                       FROM emails
-                       WHERE folder = ?
-                       ORDER BY date_received DESC
-                       LIMIT ? OFFSET ?""",
-                    (folder, _EMAILS_PAGE_SIZE, offset),
-                ).fetchall()
-            else:
-                total = conn.execute("SELECT COUNT(*) FROM emails").fetchone()[0]
-                rows = conn.execute(
-                    """SELECT id, sender, subject, date_received, spam_score,
-                              processed_notes, processed, rule_matched
-                       FROM emails
-                       ORDER BY date_received DESC
-                       LIMIT ? OFFSET ?""",
-                    (_EMAILS_PAGE_SIZE, offset),
-                ).fetchall()
+            total = conn.execute(
+                "SELECT COUNT(*) FROM emails" + where, params
+            ).fetchone()[0]
+            rows = conn.execute(
+                "SELECT id, sender, subject, date_received, spam_score,"
+                " processed_notes, processed, rule_matched"
+                " FROM emails" + where +
+                " ORDER BY date_received DESC LIMIT ? OFFSET ?",
+                params + [_EMAILS_PAGE_SIZE, offset],
+            ).fetchall()
     except sqlite3.Error as e:
-        logger.error("Failed to query emails (page=%s, folder=%s): %s", page, folder, e)
+        logger.error("Failed to query emails (page=%s, folder=%s, q=%s, rule_filter=%s): %s",
+                      page, folder, q, rule_filter, e)
         raise
 
     total_pages = max(1, (total + _EMAILS_PAGE_SIZE - 1) // _EMAILS_PAGE_SIZE)
 
     email_list = []
     for row in rows:
-        rule_name = None
-        if row["rule_matched"]:
-            try:
-                rule_name = json.loads(row["rule_matched"])["name"]
-            except (json.JSONDecodeError, KeyError):
-                pass
+        rule_name, rule_id = _resolve_rule_name(row["rule_matched"])
         email_list.append({
             "id": row["id"],
             "sender": row["sender"],
@@ -65,6 +90,7 @@ def emails():
             "processed_notes": row["processed_notes"],
             "processed": row["processed"],
             "rule_name": rule_name,
+            "rule_id": rule_id,
         })
 
     return render_template(
@@ -74,5 +100,7 @@ def emails():
         total_pages=total_pages,
         total=total,
         folder=folder,
+        q=q,
+        rule_filter=rule_filter,
         show_logout=bool(config.WEB_PASSWORD),
     )

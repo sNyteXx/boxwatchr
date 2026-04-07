@@ -2,7 +2,7 @@ import json
 import sqlite3
 from flask import render_template, abort, request
 from boxwatchr import config, imap
-from boxwatchr.database import db_connection
+from boxwatchr.database import db_connection, get_rule
 from datetime import datetime, timezone
 from boxwatchr.web.app import app, _require_auth, _score_class, logger
 
@@ -34,11 +34,22 @@ def email_detail(email_id):
     attachments = json.loads(row["attachments"] or "[]")
     history = json.loads(row["history"] or "[]")
     rule = None
+    rule_current_name = None
+    rule_exists = False
     if row["rule_matched"]:
         try:
             rule = json.loads(row["rule_matched"])
         except json.JSONDecodeError:
             pass
+    if rule:
+        rule_id = rule.get("id")
+        if rule_id:
+            rule_row = get_rule(rule_id)
+            if rule_row:
+                rule_current_name = rule_row["name"]
+                rule_exists = True
+        if not rule_current_name:
+            rule_current_name = rule.get("name")
 
     email = {
         "id": row["id"],
@@ -52,6 +63,8 @@ def email_detail(email_id):
         "spam_score": row["spam_score"],
         "score_class": _score_class(row["spam_score"]),
         "rule": rule,
+        "rule_current_name": rule_current_name,
+        "rule_exists": rule_exists,
         "actions": actions,
         "history": history,
         "attachments": attachments,

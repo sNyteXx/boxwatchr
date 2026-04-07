@@ -78,7 +78,12 @@
                 {% if email.rule %}
                 <tr>
                     <td class="detail-label">Rule Matched</td>
-                    <td>{{ email.rule.name }}</td>
+                    <td>
+                        {{ email.rule_current_name }}
+                        {% if email.rule_exists and email.rule.id %}
+                        <a href="/rules/{{ email.rule.id }}/edit" class="ms-2 btn btn-outline-secondary btn-sm"><i class="bi bi-pencil-fill"></i> Edit Rule</a>
+                        {% endif %}
+                    </td>
                 </tr>
                 {% endif %}
             </tbody>
