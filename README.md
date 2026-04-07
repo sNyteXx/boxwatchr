@@ -4,6 +4,10 @@
 
 A self-hosted email filtering daemon that watches your IMAP mailbox, scores every incoming message with a spam engine, runs it through your custom rules, and takes action automatically. No cloud, no subscriptions, just your server doing exactly what you tell it to.
 
+> **Based on [nulcraft/boxwatchr](https://github.com/nulcraft/boxwatchr)** — this is a fork of the original project by [nulcraft](https://github.com/nulcraft), published under the GNU General Public License v3.0. Many thanks for the solid foundation.
+>
+> Changes made in this fork include: bug fixes across the rule engine, IMAP handling, CSRF protection, and the login rate limiter; a redesigned dashboard with gradient headers, a cyberpunk theme switcher, and an update-check toast; a first-run setup wizard; rspamd tuning (disabled unused workers and modules, capped Redis memory, reduced log noise); reverse-proxy example configs; Fernet-encrypted IMAP password storage; and various improvements to the web UI, logging, and documentation. See [CHANGELOG.md](CHANGELOG.md) for the full history.
+
 ---
 
 ## What does it actually do?
