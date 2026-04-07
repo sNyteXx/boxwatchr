@@ -4,6 +4,11 @@
 {% block content %}
 <h1 class="h4 fw-semibold mb-4 page-title"><i class="bi bi-envelope-open-fill page-title-icon"></i>Email Detail ({{ email.id[:8] }})</h1>
 
+<div class="d-flex gap-2 mb-4">
+    <a href="/rules/new?sender={{ email.sender|urlencode }}&amp;subject={{ email.subject|urlencode }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-funnel-fill me-1"></i>Create Rule from this Email</a>
+    <a href="/emails" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Back to Emails</a>
+</div>
+
 <div class="card mb-4">
     <div class="card-body">
         <h2 class="card-subtitle">Summary</h2>
@@ -82,6 +87,29 @@
     </div>
 </div>
 
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="card-subtitle">Quick Actions</h2>
+        <div class="d-flex flex-wrap gap-2" id="manual-actions">
+            <button class="btn btn-outline-secondary btn-sm" data-action="mark_read"><i class="bi bi-envelope-open me-1"></i>Mark Read</button>
+            <button class="btn btn-outline-secondary btn-sm" data-action="mark_unread"><i class="bi bi-envelope me-1"></i>Mark Unread</button>
+            <button class="btn btn-outline-secondary btn-sm" data-action="flag"><i class="bi bi-flag-fill me-1"></i>Flag</button>
+            <button class="btn btn-outline-secondary btn-sm" data-action="unflag"><i class="bi bi-flag me-1"></i>Unflag</button>
+            <button class="btn btn-outline-danger btn-sm" data-action="learn_spam"><i class="bi bi-exclamation-triangle me-1"></i>Learn Spam</button>
+            <button class="btn btn-outline-success btn-sm" data-action="learn_ham"><i class="bi bi-check-circle me-1"></i>Learn Ham</button>
+            <div class="d-flex gap-2 align-items-center">
+                <select id="move-folder" class="form-select form-select-sm" style="width:auto"><option value="">Move to…</option>{% for f in folders %}<option value="{{ f }}">{{ f }}</option>{% endfor %}</select>
+                <button class="btn btn-outline-secondary btn-sm" data-action="move" id="move-btn" disabled><i class="bi bi-folder-symlink me-1"></i>Move</button>
+            </div>
+            <div class="d-flex gap-2 align-items-center">
+                <input type="text" id="label-input" class="form-control form-control-sm" style="width:150px" placeholder="Label name…">
+                <button class="btn btn-outline-secondary btn-sm" data-action="add_label" id="label-btn" disabled><i class="bi bi-tag me-1"></i>Add Label</button>
+            </div>
+        </div>
+        <div id="action-result" class="mt-2 small d-none"></div>
+    </div>
+</div>
+
 {% if email.history %}
 <div class="card mb-4">
     <div class="card-body">
@@ -145,6 +173,37 @@
 </div>
 {% endif %}
 
+{% if email.rspamd_symbols %}
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="card-subtitle">rspamd Symbols</h2>
+        <div class="table-responsive" style="max-height:300px;overflow-y:auto">
+        <table class="table table-sm mb-0">
+            <thead><tr><th>Symbol</th><th>Score</th><th>Description</th></tr></thead>
+            <tbody>
+                {% for sym in email.rspamd_symbols %}
+                <tr>
+                    <td class="font-monospace small">{{ sym.name }}</td>
+                    <td class="small {% if sym.score > 0 %}text-danger{% elif sym.score < 0 %}text-success{% endif %}">{{ "%.2f"|format(sym.score) }}</td>
+                    <td class="small text-secondary">{{ sym.description or "—" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if email.body_text %}
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="card-subtitle">Body Preview</h2>
+        <pre class="mb-0" style="max-height:400px;overflow-y:auto;white-space:pre-wrap;word-wrap:break-word">{{ email.body_text }}</pre>
+    </div>
+</div>
+{% endif %}
+
 {% if email.raw_headers %}
 <div class="card mb-4">
     <div class="card-body">
@@ -183,5 +242,62 @@
     </div>
 </div>
 {% endif %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    var emailId = "{{ email.id }}";
+    var csrf = document.querySelector("meta[name='csrf-token']");
+    var csrfToken = csrf ? csrf.content : "";
+    var resultDiv = document.getElementById("action-result");
+    var moveFolder = document.getElementById("move-folder");
+    var moveBtn = document.getElementById("move-btn");
+    var labelInput = document.getElementById("label-input");
+    var labelBtn = document.getElementById("label-btn");
+    if (moveFolder && moveBtn) {
+        moveFolder.addEventListener("change", function() { moveBtn.disabled = !this.value; });
+    }
+    if (labelInput && labelBtn) {
+        labelInput.addEventListener("input", function() { labelBtn.disabled = !this.value.trim(); });
+    }
+    document.getElementById("manual-actions").addEventListener("click", function(e) {
+        var btn = e.target.closest("[data-action]");
+        if (!btn) return;
+        var action = btn.dataset.action;
+        var body = {action: action};
+        if (action === "move") { var d = moveFolder.value; if (!d) return; body.destination = d; }
+        if (action === "add_label") { var l = labelInput.value.trim(); if (!l) return; body.label = l; }
+        btn.disabled = true;
+        resultDiv.classList.remove("d-none", "text-success", "text-danger");
+        resultDiv.textContent = "Executing…";
+        resultDiv.classList.add("text-secondary");
+        fetch("/emails/" + emailId + "/action", {
+            method: "POST",
+            headers: {"Content-Type": "application/json", "X-CSRF-Token": csrfToken},
+            body: JSON.stringify(body)
+        })
+        .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
+        .then(function(res) {
+            btn.disabled = false;
+            resultDiv.classList.remove("text-secondary");
+            if (res.ok && res.data.ok) {
+                resultDiv.classList.add("text-success");
+                resultDiv.textContent = "Action '" + action + "' completed.";
+                setTimeout(function() { location.reload(); }, 1000);
+            } else {
+                resultDiv.classList.add("text-danger");
+                resultDiv.textContent = "Failed: " + (res.data.error || "Unknown error");
+            }
+        })
+        .catch(function(err) {
+            btn.disabled = false;
+            resultDiv.classList.remove("text-secondary");
+            resultDiv.classList.add("text-danger");
+            resultDiv.textContent = "Error: " + err.message;
+        });
+    });
+});
+</script>
+{% endblock %}
 
 {% endblock %}
