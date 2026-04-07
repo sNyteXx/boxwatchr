@@ -29,6 +29,8 @@ def config_page():
         tls_mode=config.IMAP_TLS_MODE,
         show_logout=bool(config.WEB_PASSWORD),
         theme=config.THEME,
+        discord_webhook_url=config.DISCORD_WEBHOOK_URL,
+        email_retention_days=config.EMAIL_RETENTION_DAYS,
     )
 
 @app.route("/config", methods=["POST"])

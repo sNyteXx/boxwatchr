@@ -85,6 +85,11 @@
                     <div class="form-text">Delete log entries older than this many days. 0 keeps everything.</div>
                 </div>
                 <div class="col-12 col-md-4">
+                    <label class="form-label">Email Retention (days)</label>
+                    <input type="number" name="email_retention_days" class="form-control" value="{{ email_retention_days }}" min="0">
+                    <div class="form-text">Delete email records older than this many days. 0 keeps everything.</div>
+                </div>
+                <div class="col-12 col-md-4">
                     <label class="form-label">Dry Run</label>
                     <select name="dry_run" class="form-select">
                         <option value="true" {% if dry_run %}selected{% endif %}>Enabled (no IMAP actions taken)</option>
@@ -105,6 +110,19 @@
                         <option value="false" {% if not check_for_updates %}selected{% endif %}>Disabled</option>
                     </select>
                     <div class="form-text">When enabled, the dashboard checks GitHub for a newer version once per session.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h2 class="card-subtitle">Notifications</h2>
+            <div class="row g-3">
+                <div class="col-12 col-md-8">
+                    <label class="form-label">Global Discord Webhook URL</label>
+                    <input type="text" name="discord_webhook_url" class="form-control" value="{{ discord_webhook_url }}" placeholder="https://discord.com/api/webhooks/...">
+                    <div class="form-text">When set, all rule matches will send a Discord notification even without a per-rule webhook. Per-rule webhook URLs override this.</div>
                 </div>
             </div>
         </div>
