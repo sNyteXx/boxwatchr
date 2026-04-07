@@ -754,7 +754,7 @@ def enqueue_email(uid, folder, sender, recipients, subject, date_received, messa
             "message_id": message_id,
             "rspamd_learned": rspamd_learned,
             "content_hash": content_hash,
-            "rspamd_symbols": json.dumps(rspamd_symbols) if rspamd_symbols is not None else None,
+            "rspamd_symbols": rspamd_symbols,
             "body_text": body_text,
         })
         queue_size = len(_email_queue)
