@@ -6,7 +6,7 @@ A self-hosted email filtering daemon that watches your IMAP mailbox, scores ever
 
 > **Based on [nulcraft/boxwatchr](https://github.com/nulcraft/boxwatchr)** — this is a fork of the original project by [nulcraft](https://github.com/nulcraft), published under the GNU General Public License v3.0. Many thanks for the solid foundation.
 >
-> Changes made in this fork include: bug fixes across the rule engine, IMAP handling, CSRF protection, and the login rate limiter; a redesigned dashboard with gradient headers, a cyberpunk theme switcher, and an update-check toast; a first-run setup wizard; rspamd tuning (disabled unused workers and modules, capped Redis memory, reduced log noise); reverse-proxy example configs; Fernet-encrypted IMAP password storage; and various improvements to the web UI, logging, and documentation. See [CHANGELOG.md](CHANGELOG.md) for the full history.
+> Changes made in this fork include: bug fixes across the rule engine, IMAP handling, CSRF protection, and the login rate limiter; a redesigned dashboard with gradient headers, a cyberpunk theme switcher, and an update-check toast; a first-run setup wizard; rspamd tuning (disabled unused workers and modules, capped Redis memory, reduced log noise); reverse-proxy example configs; Fernet-encrypted IMAP password storage; Discord webhook notifications for rule matches; and various improvements to the web UI, logging, and documentation. See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 ---
 
@@ -29,11 +29,12 @@ Think of it like email filters on steroids, with a spam engine backing up every 
 - Spam scoring with rspamd, a production-grade spam analysis engine
 - Bayesian spam learning that gets smarter every time you mark something as spam or ham
 - Flexible rule engine with tons of conditions: sender, subject, domain, attachment type, spam score, and more
+- Discord webhook notifications: rules can ping a Discord channel with an embed showing sender, rule name, and spam score
 - Dashboard with stats, spam score histograms, and rule match counts
 - Full email log so you can see every message that came through and what happened to it
 - Dry run mode so you can see what boxwatchr would do before you commit to letting it run for real
 - Rule changes made in the dashboard take effect immediately, no restart needed.
-- Completely self-hosted. Nothing leaves your server.
+- Completely self-hosted. Nothing leaves your server (except optional Discord webhook notifications).
 
 ---
 
