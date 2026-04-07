@@ -628,7 +628,10 @@ def _time_condition_wait_seconds(cond, fields, rule_name):
     if operator == "greater_than":
         if current_age > threshold:
             return 0.0
-        # Wait until age strictly exceeds threshold (add 1 s buffer)
+        # Wait until age strictly exceeds threshold. Add a 1-second buffer so
+        # the condition age > threshold is clearly true by the time we retry
+        # (regardless of the unit — the rounding error at sub-second precision
+        # is negligible compared to the hour/day scale of these conditions).
         return (threshold - current_age) * multiplier + 1.0
     if operator == "greater_than_or_equal":
         if current_age >= threshold:
