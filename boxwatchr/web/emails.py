@@ -44,8 +44,10 @@ def emails():
         params.append(folder)
 
     if q:
-        conditions.append("(sender LIKE ? OR subject LIKE ?)")
-        like = "%" + q + "%"
+        # Escape SQL LIKE special characters in user input
+        escaped_q = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        conditions.append("(sender LIKE ? ESCAPE '\\' OR subject LIKE ? ESCAPE '\\')")
+        like = "%" + escaped_q + "%"
         params.extend([like, like])
 
     if rule_filter == "matched":
