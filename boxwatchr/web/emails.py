@@ -32,35 +32,45 @@ def emails():
         page = 1
 
     folder = request.args.get("folder", "").strip()
+    q = request.args.get("q", "").strip()
+    rule_filter = request.args.get("rule_filter", "").strip()
+
+    # Build dynamic WHERE clause
+    conditions = []
+    params = []
+
+    if folder:
+        conditions.append("folder = ?")
+        params.append(folder)
+
+    if q:
+        conditions.append("(sender LIKE ? OR subject LIKE ?)")
+        like = "%" + q + "%"
+        params.extend([like, like])
+
+    if rule_filter == "matched":
+        conditions.append("rule_matched IS NOT NULL")
+    elif rule_filter == "unmatched":
+        conditions.append("rule_matched IS NULL")
+
+    where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
 
     offset = (page - 1) * _EMAILS_PAGE_SIZE
     try:
         with db_connection() as conn:
-            if folder:
-                total = conn.execute(
-                    "SELECT COUNT(*) FROM emails WHERE folder = ?", (folder,)
-                ).fetchone()[0]
-                rows = conn.execute(
-                    """SELECT id, sender, subject, date_received, spam_score,
-                              processed_notes, processed, rule_matched
-                       FROM emails
-                       WHERE folder = ?
-                       ORDER BY date_received DESC
-                       LIMIT ? OFFSET ?""",
-                    (folder, _EMAILS_PAGE_SIZE, offset),
-                ).fetchall()
-            else:
-                total = conn.execute("SELECT COUNT(*) FROM emails").fetchone()[0]
-                rows = conn.execute(
-                    """SELECT id, sender, subject, date_received, spam_score,
-                              processed_notes, processed, rule_matched
-                       FROM emails
-                       ORDER BY date_received DESC
-                       LIMIT ? OFFSET ?""",
-                    (_EMAILS_PAGE_SIZE, offset),
-                ).fetchall()
+            total = conn.execute(
+                "SELECT COUNT(*) FROM emails" + where, params
+            ).fetchone()[0]
+            rows = conn.execute(
+                "SELECT id, sender, subject, date_received, spam_score,"
+                " processed_notes, processed, rule_matched"
+                " FROM emails" + where +
+                " ORDER BY date_received DESC LIMIT ? OFFSET ?",
+                params + [_EMAILS_PAGE_SIZE, offset],
+            ).fetchall()
     except sqlite3.Error as e:
-        logger.error("Failed to query emails (page=%s, folder=%s): %s", page, folder, e)
+        logger.error("Failed to query emails (page=%s, folder=%s, q=%s, rule_filter=%s): %s",
+                      page, folder, q, rule_filter, e)
         raise
 
     total_pages = max(1, (total + _EMAILS_PAGE_SIZE - 1) // _EMAILS_PAGE_SIZE)
@@ -88,5 +98,7 @@ def emails():
         total_pages=total_pages,
         total=total,
         folder=folder,
+        q=q,
+        rule_filter=rule_filter,
         show_logout=bool(config.WEB_PASSWORD),
     )
