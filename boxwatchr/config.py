@@ -28,6 +28,8 @@ WEB_PASSWORD = ""
 DB_PRUNE_DAYS = 0
 CHECK_FOR_UPDATES = True
 THEME = "default"
+DISCORD_WEBHOOK_URL = ""
+EMAIL_RETENTION_DAYS = 0
 
 def load():
     """Load app settings from the database. Call after database.initialize()."""
@@ -38,6 +40,7 @@ def load():
     global IMAP_HOST, IMAP_PORT, IMAP_USERNAME, IMAP_PASSWORD
     global IMAP_FOLDER, IMAP_POLL_INTERVAL, IMAP_TLS_MODE
     global LOG_LEVEL, DRYRUN, WEB_PASSWORD, DB_PRUNE_DAYS, CHECK_FOR_UPDATES, THEME
+    global DISCORD_WEBHOOK_URL, EMAIL_RETENTION_DAYS
 
     SETUP_COMPLETE = get_config("setup_complete", "false") == "true"
 
@@ -59,6 +62,8 @@ def load():
     DB_PRUNE_DAYS = int(get_config("db_prune_days", "0"))
     CHECK_FOR_UPDATES = get_config("check_for_updates", "true") == "true"
     THEME = get_config("theme", "default")
+    DISCORD_WEBHOOK_URL = get_config("discord_webhook_url", "")
+    EMAIL_RETENTION_DAYS = int(get_config("email_retention_days", "0"))
 
     _update_log_level()
 
