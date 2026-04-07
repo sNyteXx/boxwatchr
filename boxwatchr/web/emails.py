@@ -2,8 +2,26 @@ import json
 import sqlite3
 from flask import render_template, request
 from boxwatchr import config
-from boxwatchr.database import db_connection
+from boxwatchr.database import db_connection, get_rule
 from boxwatchr.web.app import app, _require_auth, _score_class, _EMAILS_PAGE_SIZE, logger
+
+
+def _resolve_rule_name(rule_matched_json):
+    """Resolve current rule name via rule_id, falling back to the stored name."""
+    if not rule_matched_json:
+        return None, None
+    try:
+        data = json.loads(rule_matched_json)
+    except (json.JSONDecodeError, TypeError):
+        return None, None
+    rule_id = data.get("id")
+    stored_name = data.get("name")
+    if rule_id:
+        rule_row = get_rule(rule_id)
+        if rule_row:
+            return rule_row["name"], rule_id
+    return stored_name, rule_id
+
 
 @app.route("/emails")
 @_require_auth
@@ -49,12 +67,7 @@ def emails():
 
     email_list = []
     for row in rows:
-        rule_name = None
-        if row["rule_matched"]:
-            try:
-                rule_name = json.loads(row["rule_matched"])["name"]
-            except (json.JSONDecodeError, KeyError):
-                pass
+        rule_name, rule_id = _resolve_rule_name(row["rule_matched"])
         email_list.append({
             "id": row["id"],
             "sender": row["sender"],
@@ -65,6 +78,7 @@ def emails():
             "processed_notes": row["processed_notes"],
             "processed": row["processed"],
             "rule_name": rule_name,
+            "rule_id": rule_id,
         })
 
     return render_template(

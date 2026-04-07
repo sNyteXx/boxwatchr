@@ -54,7 +54,7 @@ def rules_list():
         actions = json.loads(row["actions"] or "[]")
         condition_groups = json.loads(row["condition_groups"] or "[]") if "condition_groups" in row.keys() else []
         name = row["name"]
-        stats = rule_stats.get(name, {"count": 0, "last_triggered": None})
+        stats = rule_stats.get(row["id"], rule_stats.get(name, {"count": 0, "last_triggered": None}))
         rules.append({
             "id": row["id"],
             "name": name,
