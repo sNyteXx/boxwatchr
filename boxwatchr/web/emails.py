@@ -11,10 +11,11 @@ def _get_distinct_folders():
     try:
         with db_connection() as conn:
             rows = conn.execute(
-                "SELECT DISTINCT folder FROM emails WHERE folder != '' ORDER BY folder"
+                "SELECT DISTINCT folder FROM emails"
+                " WHERE folder IS NOT NULL AND folder != '' ORDER BY folder"
             ).fetchall()
         return [row["folder"] for row in rows]
-    except sqlite3.Error:
+    except Exception:
         return []
 
 
