@@ -4,7 +4,7 @@ import json
 import sqlite3
 from flask import render_template, jsonify, request, Response
 from boxwatchr import config
-from boxwatchr.database import db_connection
+from boxwatchr.database import db_connection, get_hourly_stats, get_top_rspamd_symbols
 from boxwatchr.web.app import app, _require_auth, logger
 
 def _get_stats():
@@ -159,6 +159,28 @@ def api_stats_top_senders():
         })
     except sqlite3.Error as e:
         logger.error("Failed to query top senders: %s", e)
+        return jsonify({"error": "Database error"}), 500
+
+
+@app.route("/api/stats/hourly")
+@_require_auth
+def api_stats_hourly():
+    try:
+        hourly = get_hourly_stats()
+        return jsonify({"hourly": [{"hour": h["hour"], "count": h["count"]} for h in hourly]})
+    except Exception as e:
+        logger.error("Failed to query hourly stats: %s", e)
+        return jsonify({"error": "Database error"}), 500
+
+
+@app.route("/api/stats/rspamd-symbols")
+@_require_auth
+def api_stats_rspamd_symbols():
+    try:
+        symbols = get_top_rspamd_symbols(limit=15)
+        return jsonify({"symbols": symbols})
+    except Exception as e:
+        logger.error("Failed to query rspamd symbols: %s", e)
         return jsonify({"error": "Database error"}), 500
 
 
