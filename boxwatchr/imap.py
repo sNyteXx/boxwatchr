@@ -310,6 +310,22 @@ def move_message(client, uid, destination, email_id=None):
         logger.error("Failed to move UID %s to %s: %s", uid, destination, e, extra={"email_id": email_id})
         raise
 
+def add_label(client, uid, label, email_id=None):
+    """Add a custom IMAP keyword/label to a message. Works with Proton Mail Bridge and other IMAP servers that support custom flags/keywords."""
+    if config.DRYRUN:
+        logger.info("DRYRUN: would add label '%s' to UID %s", label, uid, extra={"email_id": email_id})
+        return
+    logger.debug("Adding label '%s' to UID %s", label, uid, extra={"email_id": email_id})
+    try:
+        # IMAP keyword flags are stored as atoms (no backslash prefix)
+        # Proton Mail Bridge maps these to labels
+        keyword = label.encode("utf-8") if isinstance(label, str) else label
+        client.add_flags([uid], [keyword])
+        logger.debug("Added label '%s' to UID %s", label, uid, extra={"email_id": email_id})
+    except Exception as e:
+        logger.error("Failed to add label '%s' to UID %s: %s", label, uid, e, extra={"email_id": email_id})
+        raise
+
 def execute_action(client, action, uid, email_id=None):
     action_type = action["type"]
     dest = action.get("destination")
@@ -323,5 +339,7 @@ def execute_action(client, action, uid, email_id=None):
         unflag_message(client, uid, email_id=email_id)
     elif action_type == "move":
         move_message(client, uid, dest, email_id=email_id)
+    elif action_type == "add_label":
+        add_label(client, uid, action.get("label", ""), email_id=email_id)
     else:
         logger.warning("Unknown action type %r for UID %s", action_type, uid, extra={"email_id": email_id})

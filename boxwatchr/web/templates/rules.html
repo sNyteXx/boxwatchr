@@ -93,12 +93,15 @@
 {% set rule_text = [rule.name] %}
 {% for c in rule.conditions %}{% set _ = rule_text.append(c.field) %}{% set _ = rule_text.append(c.operator) %}{% set _ = rule_text.append(c.value) %}{% endfor %}
 {% for a in rule.actions %}{% set _ = rule_text.append(a.type) %}{% if a.destination %}{% set _ = rule_text.append(a.destination) %}{% endif %}{% endfor %}
-<div class="card mb-3 rule-card" data-rule-text="{{ rule_text | join(' ') | lower | e }}">
+<div class="card mb-3 rule-card{% if not rule.enabled %} opacity-50{% endif %}" data-rule-text="{{ rule_text | join(' ') | lower | e }}">
     <div class="card-body">
         <div class="d-flex align-items-start justify-content-between gap-3 mb-3 flex-wrap">
             <div class="d-flex align-items-center gap-2 flex-wrap">
                 <span class="fw-semibold">{{ rule.name or "(unnamed)" }}</span>
                 <span class="badge text-bg-secondary">match {{ rule.match or "all" }}</span>
+                {% if not rule.enabled %}
+                <span class="badge text-bg-secondary">disabled</span>
+                {% endif %}
             </div>
             <div class="d-flex gap-2">
                 <form method="post" action="/rules/{{ rule.id }}/move-up">
@@ -110,6 +113,16 @@
                     <button type="submit" class="btn btn-outline-secondary btn-sm" {{ 'disabled' if loop.last }}>&#8595;</button>
                 </form>
                 <a href="/rules/{{ rule.id }}/edit" class="btn btn-outline-secondary btn-sm">Edit</a>
+                <form method="post" action="/rules/{{ rule.id }}/duplicate">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-outline-secondary btn-sm" title="Duplicate">⧉</button>
+                </form>
+                <form method="post" action="/rules/{{ rule.id }}/toggle">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-outline-{{ 'warning' if rule.enabled else 'success' }} btn-sm" title="{{ 'Disable' if rule.enabled else 'Enable' }}">
+                        {% if rule.enabled %}<i class="bi bi-pause-fill"></i>{% else %}<i class="bi bi-play-fill"></i>{% endif %}
+                    </button>
+                </form>
                 <form method="post" action="/rules/{{ rule.id }}/run" data-rule-name="{{ rule.name }}">
                     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-outline-primary btn-sm">Run Rule</button>
@@ -171,6 +184,12 @@
                 <span class="text-secondary small">—</span>
                 {% endif %}
             </div>
+        </div>
+        <div class="d-flex flex-wrap gap-3 small text-secondary mt-2">
+            <span>{{ rule.hit_count }} match{{ "es" if rule.hit_count != 1 else "" }}</span>
+            {% if rule.last_triggered %}
+            <span>last: {{ rule.last_triggered | localtime }}</span>
+            {% endif %}
         </div>
     </div>
 </div>

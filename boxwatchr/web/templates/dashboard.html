@@ -132,6 +132,38 @@
     </div>
 </div>
 
+<h2 class="h5 fw-semibold mb-3 mt-5"><i class="bi bi-clock-history me-2"></i>Last 24 Hours</h2>
+
+<div class="row g-4 mb-4">
+    <div class="col-12 col-md-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="card-subtitle">Hourly Email Volume</h2>
+                <div style="position:relative;height:260px">
+                    <canvas id="chart-hourly-volume"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="card-subtitle">Top rspamd Symbols</h2>
+                <div id="rspamd-symbols-loading" class="text-secondary small">Loading…</div>
+                <div id="rspamd-symbols-list" class="d-none">
+                    <div class="table-responsive" style="max-height:260px;overflow-y:auto">
+                        <table class="table table-sm mb-0">
+                            <thead><tr><th>Symbol</th><th>Count</th><th>Avg Score</th></tr></thead>
+                            <tbody id="rspamd-symbols-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="rspamd-symbols-empty" class="d-none text-secondary small">No rspamd symbol data yet.</div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <h2 class="h5 fw-semibold mb-3 mt-5"><i class="bi bi-graph-up me-2"></i>Trends (Last 30 Days)</h2>
 
 <div class="row g-4 mb-4">

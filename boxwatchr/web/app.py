@@ -171,6 +171,15 @@ def _save_app_config(form):
     if theme not in ("default", "futuristic"):
         theme = "default"
 
+    discord_webhook_url = form.get("discord_webhook_url", "").strip()
+
+    try:
+        email_retention_days = int(form.get("email_retention_days", "0"))
+        if email_retention_days < 0:
+            email_retention_days = 0
+    except ValueError:
+        email_retention_days = 0
+
     disable_password = form.get("disable_password") == "1"
     new_web_password_raw = form.get("web_password", "")
     if disable_password:
@@ -187,6 +196,8 @@ def _save_app_config(form):
         "db_prune_days": str(db_prune_days),
         "check_for_updates": "true" if check_for_updates else "false",
         "theme": theme,
+        "discord_webhook_url": discord_webhook_url,
+        "email_retention_days": str(email_retention_days),
     })
 
     return web_password_stored

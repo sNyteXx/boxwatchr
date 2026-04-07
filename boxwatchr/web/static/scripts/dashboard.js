@@ -227,6 +227,66 @@
       });
   }
 
+  function loadHourlyStats() {
+    fetch("/api/stats/hourly")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.hourly && data.hourly.length > 0) {
+          lineChart(
+            "chart-hourly-volume",
+            data.hourly.map(function (d) { return d.hour.split(" ")[1] || d.hour; }),
+            data.hourly.map(function (d) { return d.count; }),
+            "Emails/hour"
+          );
+        }
+      })
+      .catch(function (err) { console.error("Failed to load hourly stats:", err); });
+  }
+
+  function loadRspamdSymbols() {
+    fetch("/api/stats/rspamd-symbols")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var loading = document.getElementById("rspamd-symbols-loading");
+        var list = document.getElementById("rspamd-symbols-list");
+        var empty = document.getElementById("rspamd-symbols-empty");
+        if (!data.symbols || data.symbols.length === 0) {
+          if (loading) loading.classList.add("d-none");
+          if (empty) empty.classList.remove("d-none");
+          return;
+        }
+        var tbody = document.getElementById("rspamd-symbols-tbody");
+        data.symbols.forEach(function (sym) {
+          var tr = document.createElement("tr");
+          var nameCell = document.createElement("td");
+          nameCell.className = "small font-monospace";
+          nameCell.textContent = sym.symbol;
+          var countCell = document.createElement("td");
+          countCell.className = "small";
+          countCell.textContent = sym.count;
+          var scoreCell = document.createElement("td");
+          scoreCell.className = "small";
+          var avg = Number(sym.avg_score).toFixed(2);
+          scoreCell.textContent = avg;
+          if (Number(avg) > 0) scoreCell.classList.add("text-danger");
+          else if (Number(avg) < 0) scoreCell.classList.add("text-success");
+          tr.appendChild(nameCell);
+          tr.appendChild(countCell);
+          tr.appendChild(scoreCell);
+          tbody.appendChild(tr);
+        });
+        if (loading) loading.classList.add("d-none");
+        list.classList.remove("d-none");
+      })
+      .catch(function (err) {
+        console.error("Failed to load rspamd symbols:", err);
+        var loading = document.getElementById("rspamd-symbols-loading");
+        if (loading) loading.textContent = "Failed to load symbols.";
+      });
+  }
+
+  loadHourlyStats();
+  loadRspamdSymbols();
   loadTimeline();
   loadTopSenders();
   loadFolders();

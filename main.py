@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from email.header import decode_header, make_header
 from email import message_from_bytes, message_from_string
 from boxwatchr import config, imap, spam, rules, health, __version__
+from boxwatchr.spam import get_rspamd_result
 from boxwatchr.web.app import start_dashboard
 from boxwatchr.imap import FatalImapError
 from boxwatchr.notes import action_sentence, failed_action_sentence, skipped_learn_sentence, build_notes_opener
@@ -300,6 +301,31 @@ def process_email(client, uid, message, current_uids=None):
         else:
             raw_headers = raw_text
 
+        # Extract plain-text body preview
+        body_text = ""
+        try:
+            if isinstance(raw_message, bytes):
+                _body_msg = message_from_bytes(raw_message)
+            else:
+                _body_msg = message_from_string(raw_message)
+            for part in _body_msg.walk():
+                ct = part.get_content_type()
+                if ct == "text/plain":
+                    payload = part.get_payload(decode=True)
+                    if payload:
+                        charset = part.get_content_charset() or "utf-8"
+                        try:
+                            body_text = payload.decode(charset, errors="replace")
+                        except (LookupError, UnicodeDecodeError):
+                            body_text = payload.decode("utf-8", errors="replace")
+                        break
+            # Limit to 2000 chars for storage
+            if len(body_text) > 2000:
+                body_text = body_text[:2000]
+        except Exception as e:
+            logger.warning("Could not extract email body text: %s", e, extra={"email_id": email_id})
+            body_text = ""
+
         _msg_obj = message_from_string(raw_headers)
         message_id = (_msg_obj.get("Message-ID") or "").strip()
 
@@ -357,9 +383,11 @@ def process_email(client, uid, message, current_uids=None):
 
         logger.info("Processing email UID %s from %s", uid, sender, extra={"email_id": email_id})
 
-        spam_score = spam.get_rspamd_score(raw_message, email_id=email_id)
-        if spam_score is None:
+        rspamd_result = get_rspamd_result(raw_message, email_id=email_id)
+        if rspamd_result is None:
             raise RuntimeError("rspamd unreachable")
+        spam_score = rspamd_result["score"]
+        rspamd_symbols = rspamd_result.get("symbols", {})
 
         matched_rule = rules.evaluate(email_data, spam_score=spam_score, email_id=email_id)
         rule_name = matched_rule["name"] if matched_rule else "none"
@@ -428,10 +456,25 @@ def process_email(client, uid, message, current_uids=None):
             else:
                 ok = send_discord_notification(
                     webhook_url, email_data, rule_name,
-                    spam_score=spam_score, email_id=email_id
+                    spam_score=spam_score, email_id=email_id,
+                    actions=actions
                 )
                 if ok:
                     discord_sent = True
+
+        # Global Discord webhook - send if configured and no per-rule Discord action was present
+        if matched_rule and not discord_actions and config.DISCORD_WEBHOOK_URL:
+            if config.DRYRUN:
+                logger.debug(
+                    "DRYRUN: would send global Discord notification for UID %s",
+                    uid, extra={"email_id": email_id}
+                )
+            else:
+                send_discord_notification(
+                    config.DISCORD_WEBHOOK_URL, email_data, rule_name,
+                    spam_score=spam_score, email_id=email_id,
+                    actions=actions
+                )
 
         notes_parts = [build_notes_opener(matched_rule, config.DRYRUN)]
         if actions:
@@ -486,6 +529,8 @@ def process_email(client, uid, message, current_uids=None):
             rspamd_learned=rspamd_learned,
             account_id=config.ACCOUNT_ID,
             content_hash=content_hash,
+            rspamd_symbols=json.dumps(rspamd_symbols) if rspamd_symbols else None,
+            body_text=body_text,
         )
 
         email_enqueued = True
