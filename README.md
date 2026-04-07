@@ -6,7 +6,7 @@ A self-hosted email filtering daemon that watches your IMAP mailbox, scores ever
 
 > **Based on [nulcraft/boxwatchr](https://github.com/nulcraft/boxwatchr)** — this is a fork of the original project by [nulcraft](https://github.com/nulcraft), published under the GNU General Public License v3.0. Many thanks for the solid foundation.
 >
-> Changes made in this fork include: bug fixes across the rule engine, IMAP handling, CSRF protection, and the login rate limiter; a redesigned dashboard with gradient headers, a cyberpunk theme switcher, and an update-check toast; a first-run setup wizard; rspamd tuning (disabled unused workers and modules, capped Redis memory, reduced log noise); reverse-proxy example configs; Fernet-encrypted IMAP password storage; Discord webhook notifications for rule matches; and various improvements to the web UI, logging, and documentation. See [CHANGELOG.md](CHANGELOG.md) for the full history.
+> Changes made in this fork include: bug fixes across the rule engine, IMAP handling, CSRF protection, and the login rate limiter; a redesigned dashboard with gradient headers, a cyberpunk (futuristic) theme switcher, and an update-check toast; dashboard trend charts (email volume, spam score, rules over time), top-senders and top-domains bar charts, and a folder overview card; CSV/JSON export for emails and logs; rule simulation to preview matches before saving; an `email_age_days` condition and an `is_empty` operator; Discord webhook notifications for rule matches; a first-run setup wizard; rspamd tuning (disabled unused workers and modules, capped Redis memory, reduced log noise); reverse-proxy example configs; Fernet-encrypted IMAP password storage; log filtering by level and date range; rules list search; email list folder filtering; clickable log rows linked to email details; and various improvements to the web UI, logging, and documentation. See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 ---
 
@@ -28,12 +28,22 @@ Think of it like email filters on steroids, with a spam engine backing up every 
 - Real-time inbox monitoring via IMAP IDLE (or polling fallback)
 - Spam scoring with rspamd, a production-grade spam analysis engine
 - Bayesian spam learning that gets smarter every time you mark something as spam or ham
-- Flexible rule engine with tons of conditions: sender, subject, domain, attachment type, spam score, and more
+- Flexible rule engine with tons of conditions: sender, recipient, subject, headers, attachment name/extension/content-type, rspamd score, email age (days), and more
+- `is_empty` / `is_not_empty` operator so rules can match emails with no attachments, missing headers, etc.
+- Rule simulation: hit "Simulate" on any rule to preview how many logged emails would match, before saving
 - Discord webhook notifications: rules can ping a Discord channel with an embed showing sender, rule name, and spam score
-- Dashboard with stats, spam score histograms, and rule match counts
+- Dashboard with stats, spam score distribution, and rule match counts
+- Dashboard trend charts (last 30 days): email volume, average spam score, and rules matched per day — powered by Chart.js
+- Top Senders and Top Domains bar charts on the dashboard
+- Folder Overview on the dashboard: all IMAP folders with email counts and direct links to filtered email views
 - Full email log so you can see every message that came through and what happened to it
+- Email list folder filter — browse emails per folder directly from the dashboard
+- CSV and JSON export for emails and logs (up to 10 000 rows each)
+- Log filtering by minimum level and date range; clickable log rows linked to the related email
+- Rules list search — filter rules in real time by name, condition, or action
 - Dry run mode so you can see what boxwatchr would do before you commit to letting it run for real
 - Rule changes made in the dashboard take effect immediately, no restart needed.
+- Futuristic (cyberpunk) theme, selectable from the Config page
 - Completely self-hosted. Nothing leaves your server (except optional Discord webhook notifications).
 
 ---

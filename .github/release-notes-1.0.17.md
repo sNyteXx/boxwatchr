@@ -1,0 +1,13 @@
+### Added
+- **Rule Simulation**: "Simulate" button on the rule form tests the rule against all logged emails and shows total tested, matched count, match rate, and a preview table of up to 50 matches — without saving the rule.
+- **`email_age_days` condition**: filter by how many days old an email is using numeric operators (greater than, less than, ≥, ≤).
+- **`is_empty` / `is_not_empty` operator**: any text condition can now check whether the field is empty (useful for "email has no attachments" rules).
+- **Dashboard Trends section (last 30 days)**: Email Volume per day, Spam Score Trend, and Rules Over Time stacked bar chart — all via Chart.js.
+- **Top Senders and Top Domains bar charts** on the dashboard.
+- **Folder Overview card**: lists every IMAP folder with logged email counts and links to folder-filtered email views.
+- **CSV/JSON export**: download up to 10 000 emails or log entries from the dashboard in CSV or JSON format.
+- **Rules list search**: real-time client-side filter by rule name, condition, or action.
+- **Log filtering**: min-level dropdown and date-from/to inputs with local↔UTC conversion.
+- **Clickable log rows**: log entries linked to an email navigate to the email detail page on click.
+- **Email list folder filter**: `?folder=…` query param on the emails page, linked from the Folder Overview card.
+- **Futuristic theme**: a cyberpunk-inspired stylesheet selectable from the Config page, persisted in the database.
