@@ -510,7 +510,7 @@ def rule_simulate():
         with db_connection() as conn:
             rows = conn.execute(
                 "SELECT id, sender, recipients, subject, date_received,"
-                " spam_score, raw_headers, attachments"
+                " spam_score, raw_headers, attachments, folder"
                 " FROM emails ORDER BY date_received DESC"
             ).fetchall()
     except Exception as e:
@@ -534,6 +534,7 @@ def rule_simulate():
                 "subject": row["subject"],
                 "date_received": row["date_received"],
                 "spam_score": row["spam_score"],
+                "folder": row["folder"],
             })
 
     preview = matched_emails[:50]

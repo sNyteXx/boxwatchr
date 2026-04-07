@@ -6,6 +6,18 @@ from boxwatchr.database import db_connection, get_rule
 from boxwatchr.web.app import app, _require_auth, _score_class, _EMAILS_PAGE_SIZE, logger
 
 
+def _get_distinct_folders():
+    """Return sorted list of distinct folder names stored in the emails table."""
+    try:
+        with db_connection() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT folder FROM emails WHERE folder != '' ORDER BY folder"
+            ).fetchall()
+        return [row["folder"] for row in rows]
+    except sqlite3.Error:
+        return []
+
+
 def _resolve_rule_name(rule_matched_json):
     """Resolve current rule name via rule_id, falling back to the stored name."""
     if not rule_matched_json:
@@ -65,7 +77,7 @@ def emails():
             ).fetchone()[0]
             rows = conn.execute(
                 "SELECT id, sender, subject, date_received, spam_score,"
-                " processed_notes, processed, rule_matched"
+                " processed_notes, processed, rule_matched, folder"
                 " FROM emails" + where +
                 " ORDER BY date_received DESC LIMIT ? OFFSET ?",
                 params + [_EMAILS_PAGE_SIZE, offset],
@@ -91,6 +103,7 @@ def emails():
             "processed": row["processed"],
             "rule_name": rule_name,
             "rule_id": rule_id,
+            "folder": row["folder"],
         })
 
     return render_template(
@@ -102,5 +115,6 @@ def emails():
         folder=folder,
         q=q,
         rule_filter=rule_filter,
+        folders=_get_distinct_folders(),
         show_logout=bool(config.WEB_PASSWORD),
     )
