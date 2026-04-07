@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.17] - 2026-04-07
+
+### Added
+- **Rule Simulation**: A "Simulate" button on the rule form tests the current rule configuration against all logged emails without saving. An overlay panel shows the total emails tested, how many would match, the match rate percentage, and a scrollable preview table of up to 50 matched emails (sender, subject, date, spam score).
+- **`email_age_days` condition field**: Rules can now filter by how many days old an email is, using the numeric operators `greater than`, `less than`, `greater than or equal`, and `less than or equal`. Appears in a dedicated "Time" group in the condition field selector.
+- **`is_empty` / `is_not_empty` operator**: Any text-based condition field (e.g. attachment name, raw headers) can now use the `is empty` operator. Selecting it swaps the value input to a boolean dropdown ("is empty" / "is not empty"), allowing rules to match emails with no attachments or missing headers.
+- **Dashboard Trend charts (last 30 days)**: Three Chart.js charts in a new "Trends" section on the dashboard — Email Volume per day (line), Spam Score Trend (daily average, line), and Rules Over Time (stacked bar chart broken down by rule). All data is fetched from `/api/stats/timeline`.
+- **Top Senders and Top Domains bar charts**: Two horizontal bar charts on the dashboard showing the 10 most frequent senders and sending domains from the email log. Data from `/api/stats/top-senders`.
+- **Folder Overview card on dashboard**: Lists every IMAP folder visible to boxwatchr, the number of logged emails from each, a "watched" badge on the monitored folder, and a "View emails →" link that opens the email list filtered to that folder. Data from `/api/stats/folders`.
+- **CSV and JSON email/log export**: Four download buttons on the dashboard (Emails CSV, Emails JSON, Logs CSV, Logs JSON) export up to 10 000 rows via `/api/export/emails` and `/api/export/logs`. Exported emails include id, sender, subject, date, spam score, matched rule name, processing notes, and folder.
+- **Rules list search**: A client-side search input on the rules page filters visible rules in real time by matching against rule name, condition fields, operators, values, and action types. Shows a "No rules match your search" notice when nothing matches.
+- **Log filtering by level and date range**: The logs page now has a "Min level" dropdown and "From" / "To" date inputs. Dates are converted between the container's local timezone and UTC for accurate filtering. Pagination honours the active filter.
+- **Clickable log rows linked to emails**: Log entries that are associated with a specific email are highlighted and become clickable rows that navigate directly to that email's detail page.
+- **Email list folder filter**: The emails page accepts a `?folder=…` query parameter to show only emails from a specific folder. The Folder Overview card on the dashboard links to folder-filtered email views.
+- **Futuristic theme**: A "Futuristic" option in the Theme setting on the Config page applies a cyberpunk-inspired stylesheet (`theme-futuristic.css`) on top of the base dark theme. Selection persists across sessions via the database.
+
+## [1.0.16] - 2026-04-07
+
+### Added
+- Added `notify_discord` action type: rules can now send a Discord embed notification via webhook when they match. The embed shows sender, matched rule name, and spam score (color-coded by severity). Webhook URL is stored per-action in the rule definition and validated against the official Discord webhook domain on save. (#5)
+
 ### Changed
 - Renamed action dropdown options "Flag message" and "Remove flag" to "Mark as flagged" and "Mark as unflagged" for consistency with "Mark as read" / "Mark as unread".
 - Added a note to the rule form conditions section explaining which address fields normalize punctuation (Username, Subdomain + domain, Domain (no subdomain)) vs. which match the exact text (Full address, Full domain, TLD).
