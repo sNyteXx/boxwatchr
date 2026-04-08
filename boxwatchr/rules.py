@@ -320,7 +320,7 @@ def _parse_date_received(date_str):
         except ValueError:
             continue
 
-    # 4. Python ≥3.7 fromisoformat as a catch-all fallback.
+    # 4. fromisoformat as a catch-all fallback.
     try:
         dt = datetime.fromisoformat(date_str)
         if dt.tzinfo is None:
