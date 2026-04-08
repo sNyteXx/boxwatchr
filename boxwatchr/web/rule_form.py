@@ -511,7 +511,9 @@ def rule_simulate():
             rows = conn.execute(
                 "SELECT id, sender, recipients, subject, date_received,"
                 " spam_score, raw_headers, attachments, folder"
-                " FROM emails ORDER BY date_received DESC"
+                " FROM emails WHERE account_id = ?"
+                " ORDER BY date_received DESC",
+                (config.ACCOUNT_ID,)
             ).fetchall()
     except Exception as e:
         logger.error("Simulation query failed: %s", e)

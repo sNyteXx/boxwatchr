@@ -304,7 +304,10 @@ def process_email(client, uid, message, current_uids=None):
 
         date_received = ""
         if envelope and envelope.date:
-            date_received = envelope.date.strftime("%Y-%m-%d %H:%M:%S")
+            utc_date = envelope.date
+            if utc_date.tzinfo is not None:
+                utc_date = utc_date.astimezone(timezone.utc)
+            date_received = utc_date.strftime("%Y-%m-%d %H:%M:%S")
 
         recipients = []
         for addr_list in ([envelope.to, envelope.cc] if envelope else []):
