@@ -879,3 +879,29 @@ def get_unprocessed_emails(account_id=None):
     except sqlite3.Error as e:
         logger.error("Failed to fetch unprocessed email records: %s", e)
         raise
+
+
+def reset_unmatched_for_reevaluation(account_id):
+    """Mark processed-but-unmatched emails for re-evaluation.
+
+    When rules are created, edited, deleted, toggled, or reordered, emails
+    that were previously processed without matching any rule should be
+    re-evaluated against the updated rule set.  This function resets their
+    ``processed`` flag so the next periodic rescan picks them up.
+    """
+    logger.debug("Resetting unmatched emails for re-evaluation (account_id=%s)", account_id)
+    try:
+        with _db() as conn:
+            cursor = conn.execute(
+                "UPDATE emails SET processed = 0, retry_after = NULL"
+                " WHERE processed = 1 AND rule_matched IS NULL AND account_id = ?",
+                (account_id,)
+            )
+            conn.commit()
+            count = cursor.rowcount
+            if count:
+                logger.info("Reset %s unmatched email(s) for re-evaluation", count)
+            return count
+    except sqlite3.Error as e:
+        logger.error("Failed to reset unmatched emails: %s", e)
+        raise

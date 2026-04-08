@@ -132,7 +132,7 @@ def watch(callback, rescan_callback=None):
             _watch_idle(client, known_uids, callback, rescan_callback=rescan_callback)
         else:
             logger.warning("IMAP IDLE is not supported, falling back to polling every %s seconds", config.IMAP_POLL_INTERVAL)
-            _watch_poll(client, known_uids, callback)
+            _watch_poll(client, known_uids, callback, rescan_callback=rescan_callback)
     finally:
         try:
             client.logout()
@@ -203,7 +203,8 @@ def _watch_idle(client, known_uids, callback, rescan_callback=None):
             logger.warning("IDLE connection interrupted: %s", e)
             raise
 
-def _watch_poll(client, known_uids, callback):
+def _watch_poll(client, known_uids, callback, rescan_callback=None):
+    last_rescan = time.monotonic()
     while not _stop_event.is_set() and not _reconnect_event.is_set():
         try:
             logger.debug("Polling: sleeping %s seconds", config.IMAP_POLL_INTERVAL)
@@ -229,6 +230,11 @@ def _watch_poll(client, known_uids, callback):
                     callback(client, uid, message)
             else:
                 logger.debug("Poll complete: no new messages")
+
+            if rescan_callback and time.monotonic() - last_rescan >= RESCAN_INTERVAL:
+                logger.info("Running periodic rescan of %s", config.IMAP_FOLDER)
+                rescan_callback(client)
+                last_rescan = time.monotonic()
 
         except Exception as e:
             logger.warning("Poll connection interrupted: %s", e)
