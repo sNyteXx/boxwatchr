@@ -285,6 +285,55 @@ def validate_rule(rule):
         result["condition_groups"] = validated_groups
     return result
 
+def _parse_date_received(date_str):
+    """Parse a date_received string into a timezone-aware UTC datetime.
+
+    Handles the standard storage format (``YYYY-MM-DD HH:MM:SS`` assumed UTC)
+    as well as strings that carry timezone offset information (e.g. from
+    legacy data or ISO-8601 variants).  Returns ``None`` when the string
+    cannot be parsed.
+    """
+    if not date_str or not date_str.strip():
+        return None
+
+    date_str = date_str.strip()
+
+    # 1. Standard format without timezone — assumed to be UTC.
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+        return dt.replace(tzinfo=timezone.utc)
+    except ValueError:
+        pass
+
+    # 2. ISO-8601 with 'T' separator, no timezone.
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S")
+        return dt.replace(tzinfo=timezone.utc)
+    except ValueError:
+        pass
+
+    # 3. Formats with timezone offset (e.g. "2026-04-08 06:42:47+00:00").
+    for fmt in ("%Y-%m-%d %H:%M:%S%z", "%Y-%m-%dT%H:%M:%S%z"):
+        try:
+            dt = datetime.strptime(date_str, fmt)
+            return dt.astimezone(timezone.utc)
+        except ValueError:
+            continue
+
+    # 4. Python ≥3.7 fromisoformat as a catch-all fallback.
+    try:
+        dt = datetime.fromisoformat(date_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt
+    except (ValueError, TypeError):
+        pass
+
+    logger.debug("Could not parse date_received: %r", date_str)
+    return None
+
 def _extract_fields(email):
     def strip_display_name(address):
         address = address.strip()
@@ -342,11 +391,19 @@ def _extract_fields(email):
     email_age_hours = None
     if date_received:
         try:
-            dt = datetime.strptime(date_received, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-            delta = datetime.now(timezone.utc) - dt
-            email_age_days = delta.total_seconds() / 86400.0
-            email_age_hours = delta.total_seconds() / 3600.0
-        except (ValueError, TypeError):
+            dt = _parse_date_received(date_received)
+            if dt is not None:
+                delta = datetime.now(timezone.utc) - dt
+                total_seconds = delta.total_seconds()
+                if total_seconds >= 0:
+                    email_age_days = total_seconds / 86400.0
+                    email_age_hours = total_seconds / 3600.0
+                else:
+                    # Date appears to be in the future (e.g. bad timezone);
+                    # treat as age 0 so "greater_than" conditions won't match.
+                    email_age_days = 0.0
+                    email_age_hours = 0.0
+        except Exception:
             pass
 
     return {
