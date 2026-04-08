@@ -10,7 +10,7 @@ from boxwatchr.spam import get_rspamd_result
 from boxwatchr.web.app import start_dashboard
 from boxwatchr.imap import FatalImapError
 from boxwatchr.notes import action_sentence, failed_action_sentence, skipped_learn_sentence, build_notes_opener
-from boxwatchr.database import set_processing, clear_email_id_from_logs, enqueue_email, enqueue_email_update, get_known_uids, get_unprocessed_emails, get_email_by_content_hash, update_email_uid, compute_content_hash
+from boxwatchr.database import set_processing, clear_email_id_from_logs, enqueue_email, enqueue_email_update, get_known_uids, get_unprocessed_emails, get_email_by_content_hash, update_email_uid, compute_content_hash, reset_emails_for_full_rescan
 from boxwatchr.rules import TERMINAL_ACTIONS
 from boxwatchr.notifications import send_discord_notification
 from boxwatchr.logger import get_logger
@@ -673,8 +673,22 @@ def main():
                 break
 
             def _rescan_and_reprocess(client):
-                """Combined rescan callback: find new UIDs and retry deferred emails."""
+                """Combined rescan callback: find new UIDs and retry deferred emails.
+
+                In ``all`` or ``unread_only`` mode, reset the matching emails
+                in the database so they are fully re-evaluated against the
+                current rule set on every rescan interval.
+                """
                 current_uids = startup_scan(client)
+
+                mode = config.RESCAN_MODE
+                if mode in ("all", "unread_only"):
+                    if mode == "unread_only":
+                        target_uids = imap.get_unseen_uids(client)
+                    else:
+                        target_uids = current_uids
+                    reset_emails_for_full_rescan(config.ACCOUNT_ID, uids=target_uids)
+
                 reprocess_pending_emails(client, current_uids)
 
             try:

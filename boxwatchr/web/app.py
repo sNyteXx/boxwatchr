@@ -180,6 +180,17 @@ def _save_app_config(form):
     except ValueError:
         email_retention_days = 0
 
+    try:
+        rescan_interval = int(form.get("rescan_interval", "300"))
+        if rescan_interval < 60:
+            rescan_interval = 60
+    except ValueError:
+        rescan_interval = 300
+
+    rescan_mode = form.get("rescan_mode", "new_only").strip()
+    if rescan_mode not in ("all", "unread_only", "new_only"):
+        rescan_mode = "new_only"
+
     disable_password = form.get("disable_password") == "1"
     new_web_password_raw = form.get("web_password", "")
     if disable_password:
@@ -198,6 +209,8 @@ def _save_app_config(form):
         "theme": theme,
         "discord_webhook_url": discord_webhook_url,
         "email_retention_days": str(email_retention_days),
+        "rescan_interval": str(rescan_interval),
+        "rescan_mode": rescan_mode,
     })
 
     return web_password_stored

@@ -31,6 +31,8 @@ def config_page():
         theme=config.THEME,
         discord_webhook_url=config.DISCORD_WEBHOOK_URL,
         email_retention_days=config.EMAIL_RETENTION_DAYS,
+        rescan_interval=config.RESCAN_INTERVAL,
+        rescan_mode=config.RESCAN_MODE,
     )
 
 @app.route("/config", methods=["POST"])

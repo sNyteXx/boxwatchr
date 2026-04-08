@@ -8,7 +8,10 @@ from boxwatchr.logger import get_logger
 logger = get_logger("boxwatchr.imap")
 
 IDLE_TIMEOUT = 1740  # 29 minutes, RFC 2177 recommended maximum before server-side timeout (typically 30m)
-RESCAN_INTERVAL = 300  # 5 minutes
+
+def _get_rescan_interval():
+    """Return the configured rescan interval in seconds (minimum 60)."""
+    return max(config.RESCAN_INTERVAL, 60)
 
 _stop_event = threading.Event()
 _reconnect_event = threading.Event()
@@ -119,6 +122,18 @@ def get_existing_uids(client):
         logger.error("Failed to fetch existing UIDs: %s", e)
         raise
 
+
+def get_unseen_uids(client):
+    """Return UIDs of messages without the \\Seen flag."""
+    logger.debug("Fetching unseen UIDs in %s", config.IMAP_FOLDER)
+    try:
+        uids = client.search(["UNSEEN"])
+        logger.debug("Found %s unseen messages in %s", len(uids), config.IMAP_FOLDER)
+        return set(uids)
+    except Exception as e:
+        logger.error("Failed to fetch unseen UIDs: %s", e)
+        raise
+
 def watch(callback, rescan_callback=None):
     _reconnect_event.clear()
     client = connect()
@@ -154,7 +169,7 @@ def _watch_idle(client, known_uids, callback, rescan_callback=None):
             while time.monotonic() < deadline:
                 if _stop_event.is_set() or _reconnect_event.is_set():
                     break
-                if rescan_callback and time.monotonic() - last_rescan >= RESCAN_INTERVAL:
+                if rescan_callback and time.monotonic() - last_rescan >= _get_rescan_interval():
                     rescan_due = True
                     break
                 chunk = client.idle_check(timeout=1)
@@ -231,7 +246,7 @@ def _watch_poll(client, known_uids, callback, rescan_callback=None):
             else:
                 logger.debug("Poll complete: no new messages")
 
-            if rescan_callback and time.monotonic() - last_rescan >= RESCAN_INTERVAL:
+            if rescan_callback and time.monotonic() - last_rescan >= _get_rescan_interval():
                 logger.info("Running periodic rescan of %s", config.IMAP_FOLDER)
                 rescan_callback(client)
                 last_rescan = time.monotonic()

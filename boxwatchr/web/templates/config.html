@@ -111,6 +111,20 @@
                     </select>
                     <div class="form-text">When enabled, the dashboard checks GitHub for a newer version once per session.</div>
                 </div>
+                <div class="col-12 col-md-4">
+                    <label class="form-label">Rescan Interval (seconds)</label>
+                    <input type="number" name="rescan_interval" class="form-control" value="{{ rescan_interval }}" min="60">
+                    <div class="form-text">How often to re-evaluate all folder emails against rules (minimum 60 seconds).</div>
+                </div>
+                <div class="col-12 col-md-4">
+                    <label class="form-label">Rescan Mode</label>
+                    <select name="rescan_mode" class="form-select">
+                        <option value="all" {% if rescan_mode == "all" %}selected{% endif %}>All emails (read &amp; unread)</option>
+                        <option value="unread_only" {% if rescan_mode == "unread_only" %}selected{% endif %}>Unread only</option>
+                        <option value="new_only" {% if rescan_mode == "new_only" %}selected{% endif %}>New only (default)</option>
+                    </select>
+                    <div class="form-text">"All" and "Unread only" re-evaluate every email in the folder each interval. "New only" only processes emails seen for the first time.</div>
+                </div>
             </div>
         </div>
     </div>
