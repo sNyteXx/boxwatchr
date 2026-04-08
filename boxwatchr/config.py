@@ -30,6 +30,8 @@ CHECK_FOR_UPDATES = True
 THEME = "default"
 DISCORD_WEBHOOK_URL = ""
 EMAIL_RETENTION_DAYS = 0
+RESCAN_INTERVAL = 300       # seconds between periodic full rescans
+RESCAN_MODE = "new_only"    # "all", "unread_only", or "new_only"
 
 def load():
     """Load app settings from the database. Call after database.initialize()."""
@@ -41,6 +43,7 @@ def load():
     global IMAP_FOLDER, IMAP_POLL_INTERVAL, IMAP_TLS_MODE
     global LOG_LEVEL, DRYRUN, WEB_PASSWORD, DB_PRUNE_DAYS, CHECK_FOR_UPDATES, THEME
     global DISCORD_WEBHOOK_URL, EMAIL_RETENTION_DAYS
+    global RESCAN_INTERVAL, RESCAN_MODE
 
     SETUP_COMPLETE = get_config("setup_complete", "false") == "true"
 
@@ -64,6 +67,10 @@ def load():
     THEME = get_config("theme", "default")
     DISCORD_WEBHOOK_URL = get_config("discord_webhook_url", "")
     EMAIL_RETENTION_DAYS = int(get_config("email_retention_days", "0"))
+    RESCAN_INTERVAL = int(get_config("rescan_interval", "300"))
+    RESCAN_MODE = get_config("rescan_mode", "new_only")
+    if RESCAN_MODE not in ("all", "unread_only", "new_only"):
+        RESCAN_MODE = "new_only"
 
     _update_log_level()
 

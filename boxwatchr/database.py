@@ -879,3 +879,70 @@ def get_unprocessed_emails(account_id=None):
     except sqlite3.Error as e:
         logger.error("Failed to fetch unprocessed email records: %s", e)
         raise
+
+
+def reset_unmatched_for_reevaluation(account_id):
+    """Mark processed-but-unmatched emails for re-evaluation.
+
+    When rules are created, edited, deleted, toggled, or reordered, emails
+    that were previously processed without matching any rule should be
+    re-evaluated against the updated rule set.  This function resets their
+    ``processed`` flag so the next periodic rescan picks them up.
+    """
+    logger.debug("Resetting unmatched emails for re-evaluation (account_id=%s)", account_id)
+    try:
+        with _db() as conn:
+            cursor = conn.execute(
+                "UPDATE emails SET processed = 0, retry_after = NULL"
+                " WHERE processed = 1 AND rule_matched IS NULL AND account_id = ?",
+                (account_id,)
+            )
+            conn.commit()
+            count = cursor.rowcount
+            if count:
+                logger.info("Reset %s unmatched email(s) for re-evaluation", count)
+            return count
+    except sqlite3.Error as e:
+        logger.error("Failed to reset unmatched emails: %s", e)
+        raise
+
+
+def reset_emails_for_full_rescan(account_id, uids=None):
+    """Reset processed emails so they are re-evaluated on the next rescan.
+
+    If *uids* is provided (a set/list of UID strings), only those emails are
+    reset.  Otherwise ALL emails for the account in the current folder are
+    reset.
+
+    Already-matched emails that previously triggered a terminal action
+    (move/delete) won't be in the folder anymore, so they will naturally be
+    skipped by the reprocess loop when their UID is no longer present.
+    """
+    logger.debug("Resetting emails for full rescan (account_id=%s, uids=%s)",
+                 account_id, len(uids) if uids is not None else "all")
+    try:
+        with _db() as conn:
+            if uids is not None:
+                if not uids:
+                    return 0
+                placeholders = ",".join("?" for _ in uids)
+                cursor = conn.execute(
+                    "UPDATE emails SET processed = 0, retry_after = NULL"
+                    " WHERE processed = 1 AND account_id = ?"
+                    " AND uid IN (%s)" % placeholders,
+                    (account_id, *(str(u) for u in uids))
+                )
+            else:
+                cursor = conn.execute(
+                    "UPDATE emails SET processed = 0, retry_after = NULL"
+                    " WHERE processed = 1 AND account_id = ?",
+                    (account_id,)
+                )
+            conn.commit()
+            count = cursor.rowcount
+            if count:
+                logger.info("Reset %s email(s) for full rescan", count)
+            return count
+    except sqlite3.Error as e:
+        logger.error("Failed to reset emails for full rescan: %s", e)
+        raise

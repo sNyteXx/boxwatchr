@@ -2,7 +2,7 @@ import json
 from flask import render_template, request, redirect, url_for, abort, flash
 from boxwatchr import config
 from boxwatchr import rules as _rules_engine
-from boxwatchr.database import get_rules, delete_rule, move_rule_up, move_rule_down, insert_rule, duplicate_rule, get_rule_stats
+from boxwatchr.database import get_rules, delete_rule, move_rule_up, move_rule_down, insert_rule, duplicate_rule, get_rule_stats, reset_unmatched_for_reevaluation
 from boxwatchr.rules import validate_rule
 from boxwatchr.web.app import app, _require_auth, _require_csrf, logger
 
@@ -93,6 +93,7 @@ def rule_delete(rule_id):
     try:
         delete_rule(rule_id, config.ACCOUNT_ID)
         _rules_engine.load_rules()
+        reset_unmatched_for_reevaluation(config.ACCOUNT_ID)
         logger.info("User deleted rule '%s'", rule_name)
     except Exception as e:
         logger.error("Failed to delete rule '%s': %s", rule_name, e)
@@ -109,6 +110,7 @@ def rule_move_up(rule_id):
     try:
         move_rule_up(rule_id, config.ACCOUNT_ID)
         _rules_engine.load_rules()
+        reset_unmatched_for_reevaluation(config.ACCOUNT_ID)
     except Exception as e:
         logger.error("Failed to move rule up: %s", e)
     return redirect(url_for("rules_list"))
@@ -124,6 +126,7 @@ def rule_move_down(rule_id):
     try:
         move_rule_down(rule_id, config.ACCOUNT_ID)
         _rules_engine.load_rules()
+        reset_unmatched_for_reevaluation(config.ACCOUNT_ID)
     except Exception as e:
         logger.error("Failed to move rule down: %s", e)
     return redirect(url_for("rules_list"))
@@ -139,6 +142,7 @@ def rule_duplicate(rule_id):
     try:
         new_id = duplicate_rule(rule_id, config.ACCOUNT_ID)
         _rules_engine.load_rules()
+        reset_unmatched_for_reevaluation(config.ACCOUNT_ID)
         logger.info("User duplicated rule '%s'", row["name"])
         flash("Rule '%s' duplicated." % row["name"], "success")
     except Exception as e:
@@ -162,6 +166,7 @@ def rule_toggle(rule_id):
             conn.execute("UPDATE rules SET enabled = ? WHERE id = ?", (new_enabled, rule_id))
             conn.commit()
         _rules_engine.load_rules()
+        reset_unmatched_for_reevaluation(config.ACCOUNT_ID)
         state = "enabled" if new_enabled else "disabled"
         logger.info("User %s rule '%s'", state, row["name"])
     except Exception as e:
@@ -232,6 +237,7 @@ def rules_import():
 
     if imported:
         _rules_engine.load_rules()
+        reset_unmatched_for_reevaluation(config.ACCOUNT_ID)
         logger.info("User imported %s rule(s) (%s duplicate(s), %s skipped)", imported, duplicates, skipped)
 
     parts = ["Imported %s rule(s)." % imported]
