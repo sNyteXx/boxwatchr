@@ -930,7 +930,7 @@ def reset_emails_for_full_rescan(account_id, uids=None):
                     "UPDATE emails SET processed = 0, retry_after = NULL"
                     " WHERE processed = 1 AND account_id = ?"
                     " AND uid IN (%s)" % placeholders,
-                    [account_id] + [str(u) for u in uids]
+                    (account_id, *(str(u) for u in uids))
                 )
             else:
                 cursor = conn.execute(
