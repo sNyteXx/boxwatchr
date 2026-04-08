@@ -370,10 +370,11 @@ document.addEventListener("DOMContentLoaded", function() {
 
                 var preview = document.getElementById("sim-preview");
                 if (data.matched_emails && data.matched_emails.length > 0) {
-                    var html = '<table class="table table-sm mb-0"><thead><tr><th>Sender</th><th>Subject</th><th>Date</th><th>Score</th></tr></thead><tbody>';
+                    var html = '<table class="table table-sm mb-0"><thead><tr><th>Sender</th><th>Subject</th><th>Date</th><th>Score</th><th>Folder</th></tr></thead><tbody>';
                     data.matched_emails.forEach(function(e) {
                         var score = e.spam_score != null ? Number(e.spam_score).toFixed(1) : "\u2014";
-                        html += "<tr><td class=\"small\">" + esc(e.sender || "\u2014") + "</td><td class=\"small text-truncate\" style=\"max-width:200px\">" + esc(e.subject || "\u2014") + "</td><td class=\"small text-nowrap\">" + esc(e.date_received || "\u2014") + "</td><td class=\"small\">" + esc(score) + "</td></tr>";
+                        var folder = e.folder || "\u2014";
+                        html += "<tr><td class=\"small\">" + esc(e.sender || "\u2014") + "</td><td class=\"small text-truncate\" style=\"max-width:200px\">" + esc(e.subject || "\u2014") + "</td><td class=\"small text-nowrap\">" + esc(e.date_received || "\u2014") + "</td><td class=\"small\">" + esc(score) + "</td><td class=\"small text-nowrap\">" + esc(folder) + "</td></tr>";
                     });
                     html += "</tbody></table>";
                     if (data.matched > 50) html += '<p class="text-secondary small mt-2 mb-0">Showing 50 of ' + data.matched + " matches.</p>";

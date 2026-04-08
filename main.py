@@ -2,7 +2,7 @@ import json
 import uuid
 import time
 import signal as _signal
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from email.header import decode_header, make_header
 from email import message_from_bytes, message_from_string
 from boxwatchr import config, imap, spam, rules, health, __version__
@@ -248,14 +248,36 @@ def reprocess_pending_emails(client, current_uids):
                         entry["destination"] = action["destination"]
                     new_history_entries.append(entry)
 
+        # If no rule matched, check whether a time-deferred rule might fire later
+        retry_after = None
+        is_still_deferred = False
+        if not matched_rule and not config.DRYRUN:
+            retry_wait_s = rules.get_min_retry_wait_seconds(
+                email_data, spam_score=spam_score, email_id=email_id
+            )
+            if retry_wait_s and retry_wait_s > 0:
+                is_still_deferred = True
+                retry_after = (
+                    datetime.now(timezone.utc) + timedelta(seconds=retry_wait_s)
+                ).strftime("%Y-%m-%d %H:%M:%S")
+                processed_notes = (
+                    "Pending: no rule matched yet — time-based rule check scheduled for %s." % retry_after
+                )
+                logger.debug(
+                    "Pending email %s still deferred: retry after %s",
+                    email_id, retry_after,
+                    extra={"email_id": email_id}
+                )
+
         enqueue_email_update(
             email_id,
             json.dumps(matched_rule) if matched_rule else None,
             actions,
-            processed=0 if (not all_ok or config.DRYRUN) else 1,
+            processed=0 if (not all_ok or config.DRYRUN or is_still_deferred) else 1,
             processed_at=processed_at,
             processed_notes=processed_notes,
             history=current_history + new_history_entries,
+            retry_after=retry_after,
         )
         logger.debug("Enqueued update for pending email %s", email_id, extra={"email_id": email_id})
 
@@ -507,6 +529,27 @@ def process_email(client, uid, message, current_uids=None):
                     entry["destination"] = a["destination"]
                 history.append(entry)
 
+        # Check whether a time-deferred rule could match in the future
+        retry_after = None
+        is_deferred = False
+        if not matched_rule and not config.DRYRUN:
+            retry_wait_s = rules.get_min_retry_wait_seconds(
+                email_data, spam_score=spam_score, email_id=email_id
+            )
+            if retry_wait_s and retry_wait_s > 0:
+                is_deferred = True
+                retry_after = (
+                    datetime.now(timezone.utc) + timedelta(seconds=retry_wait_s)
+                ).strftime("%Y-%m-%d %H:%M:%S")
+                processed_notes = (
+                    "Pending: no rule matched yet — time-based rule check scheduled for %s." % retry_after
+                )
+                logger.info(
+                    "Email UID %s deferred: time-based rule may match in %.0fs (retry after %s)",
+                    uid, retry_wait_s, retry_after,
+                    extra={"email_id": email_id}
+                )
+
         enqueue_email(
             uid=str(uid),
             folder=config.IMAP_FOLDER,
@@ -520,7 +563,7 @@ def process_email(client, uid, message, current_uids=None):
             actions=actions,
             raw_headers=raw_headers,
             attachments=attachments,
-            processed=0 if config.DRYRUN else 1,
+            processed=0 if (config.DRYRUN or is_deferred) else 1,
             processed_at=processed_at,
             processed_notes=processed_notes,
             email_id=email_id,
@@ -531,6 +574,7 @@ def process_email(client, uid, message, current_uids=None):
             content_hash=content_hash,
             rspamd_symbols=json.dumps(rspamd_symbols) if rspamd_symbols else None,
             body_text=body_text,
+            retry_after=retry_after,
         )
 
         email_enqueued = True
@@ -625,9 +669,14 @@ def main():
             if _shutdown:
                 break
 
+            def _rescan_and_reprocess(client):
+                """Combined rescan callback: find new UIDs and retry deferred emails."""
+                current_uids = startup_scan(client)
+                reprocess_pending_emails(client, current_uids)
+
             try:
                 logger.debug("Entering IMAP watch loop")
-                imap.watch(process_email, rescan_callback=startup_scan)
+                imap.watch(process_email, rescan_callback=_rescan_and_reprocess)
             except FatalImapError as e:
                 if _shutdown:
                     break
